@@ -73,17 +73,17 @@ class Pool {
   // everything the class needs to know.
   struct PoolHeader {
     // The size of the pool in bytes.
-    int Size;
+    int size;
     // The number of blocks in the pool.
-    int NumBlocks;
+    int num_blocks;
     // Pointer to the block allocation array. This array keeps track of which
     // blocks are allocated and which aren't. It basically functions as a
     // bit field.
-    uint8_t *BlockAllocation;
+    uint8_t *block_allocation;
     // The size of the block allocation array in bytes.
-    int BlockAllocationSize;
+    int block_allocation_size;
     // Pointer to the start of the actual pool data.
-    uint8_t *Data;
+    uint8_t *data;
   };
 
   // A pointer to our pool header.

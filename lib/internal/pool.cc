@@ -56,20 +56,20 @@ void Pool::BuildNewPool(int fd, int size) {
 
   // Our pool header will start from the very beginning of the pool.
   header_ = reinterpret_cast<PoolHeader *>(pool);
-  header_->Size = data_size;
-  header_->NumBlocks = num_blocks;
+  header_->size = data_size;
+  header_->num_blocks = num_blocks;
 
   // The block allocation array starts right after the header.
-  header_->BlockAllocation = pool + sizeof(PoolHeader);
+  header_->block_allocation = pool + sizeof(PoolHeader);
   // Right now, nothing is allocated, so that array should be completely
   // zeroed
   // out.
-  memset(header_->BlockAllocation, 0, block_bytes);
+  memset(header_->block_allocation, 0, block_bytes);
 
   // Mark where our actual data starts.
-  header_->Data = pool + header_overhead;
+  header_->data = pool + header_overhead;
 
-  header_->BlockAllocationSize = block_bytes;
+  header_->block_allocation_size = block_bytes;
 }
 
 void Pool::BuildExistingPool(int fd, int size) {
@@ -82,9 +82,9 @@ void Pool::BuildExistingPool(int fd, int size) {
   // Since our memory should already be initialized, we can just assume that
   // non-pointer members are valid. Pointer members, however, may not be
   // since we let mmap put it wherever it wanted.
-  header_->BlockAllocation = pool + sizeof(PoolHeader);
+  header_->block_allocation = pool + sizeof(PoolHeader);
   // Mark where our actual data starts.
-  header_->Data = pool + header_overhead;
+  header_->data = pool + header_overhead;
 }
 
 uint8_t *Pool::Allocate(int size) {
@@ -106,21 +106,21 @@ uint8_t *Pool::Allocate(int size) {
   // Stores information about segments.
   struct Segment {
     // Starting bit mask.
-    uint8_t StartMask;
+    uint8_t start_mask;
     // Ending bit mask.
-    uint8_t EndMask;
+    uint8_t end_mask;
     // Segment start byte index.
-    int StartIndex;
+    int start_index;
     // Segment end byte index.
-    int EndIndex;
-    // The actual start byte of this segment in header_->Data.
-    int StartByte;
+    int end_index;
+    // The actual start byte of this segment in header_->data.
+    int start_byte;
   } segment, smallest_segment;
 
-  for (int i = 0; i < header_->BlockAllocationSize; ++i) {
+  for (int i = 0; i < header_->block_allocation_size; ++i) {
     uint8_t mask_shifts = 0;
     for (uint8_t mask = 1; mask != 0; mask <<= 1) {
-      if ((header_->BlockAllocation[i] & mask) && in_free_segment) {
+      if ((header_->block_allocation[i] & mask) && in_free_segment) {
         // We reached the end of a free segment.
         in_free_segment = false;
         if (segment_size) {
@@ -134,7 +134,7 @@ uint8_t *Pool::Allocate(int size) {
         }
       }
 
-      if (!(header_->BlockAllocation[i] & mask)) {
+      if (!(header_->block_allocation[i] & mask)) {
         // We reached the start of a free segment.
         if (!in_free_segment) {
           in_free_segment = true;
@@ -163,11 +163,11 @@ uint8_t *Pool::Allocate(int size) {
 
   if (smallest_size != INT_MAX) {
     // Set the segment as occupied.
-    SetSegment(smallest_segment.StartIndex, smallest_segment.StartMask,
-               smallest_segment.EndIndex, smallest_segment.EndMask, 1);
+    SetSegment(smallest_segment.start_index, smallest_segment.start_mask,
+               smallest_segment.end_index, smallest_segment.end_mask, 1);
 
     // Return the starting block.
-    return header_->Data + smallest_segment.StartByte;
+    return header_->data + smallest_segment.start_byte;
   }
 
   // Not enough memory.
@@ -176,7 +176,7 @@ uint8_t *Pool::Allocate(int size) {
 
 void Pool::Free(uint8_t *block, int size) {
   // Set all the entries in the block allocation array for this segment to zero.
-  const int start_byte = block - header_->Data;
+  const int start_byte = block - header_->data;
   const int start_index = start_byte / kBlockSize;
   const uint8_t start_mask = 1 << (start_byte % kBlockSize);
   const int end_index = (start_byte + size - 1) / kBlockSize;
@@ -198,11 +198,11 @@ void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
     start_mask = end_mask;
   }
   if (value) {
-    header_->BlockAllocation[start_index] |= start_mask;
-    header_->BlockAllocation[end_index] |= end_mask;
+    header_->block_allocation[start_index] |= start_mask;
+    header_->block_allocation[end_index] |= end_mask;
   } else {
-    header_->BlockAllocation[start_index] &= ~start_mask;
-    header_->BlockAllocation[end_index] &= ~end_mask;
+    header_->block_allocation[start_index] &= ~start_mask;
+    header_->block_allocation[end_index] &= ~end_mask;
   }
 
   // Fill in the middle.
@@ -213,7 +213,7 @@ void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
     fill = 0;
   }
   for (int i = start_index + 1; i < end_index; ++i) {
-    header_->BlockAllocation[i] = fill;
+    header_->block_allocation[i] = fill;
   }
 }
 
