@@ -15,7 +15,10 @@ class Pool {
   //  already exists, this MUST BE THE SAME as the size used to create it,
   //  otherwise Allocate() might not give you blocks that are actually mapped in
   //  shared memory.
-  explicit Pool(int size);
+  //  clear: If this is true, it truncates the entire memory region before
+  //  initializing it, otherwise, if the SHM segment already exists, the pool we
+  //  be initialized with the data already in it.
+  explicit Pool(int size, bool clear = false);
   ~Pool();
 
   // Gets a pointer to a block of memory from the pool.
@@ -67,6 +70,11 @@ class Pool {
     uint8_t *raw = reinterpret_cast<uint8_t *>(array);
     Free(raw, sizeof(T) * length);
   }
+
+  // Forcefully clears and reinitializes the shared memory block.
+  // Returns:
+  //  True if it succeeds, false otherwise.
+  bool Clear();
 
  private:
   // An instance of this struct actually lives in SHM and keeps track of
