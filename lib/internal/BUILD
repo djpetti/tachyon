@@ -7,7 +7,7 @@ filegroup(
 
 cc_library(
   name = "libgaia_internal",
-  srcs = ["pool.cc"],
+  srcs = ["pool.cc", "mutex.cc"],
   hdrs = [":internal_hdrs"],
   linkopts = ["-lrt"],
 )
@@ -18,4 +18,11 @@ cc_test(
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
   linkopts = ["-lrt"],
+)
+
+cc_test(
+  name = "mutex_test",
+  srcs = ["mutex_test.cc", "mutex.h"],
+  copts = ["-Iexternal/gtest/include"],
+  deps = ["@gtest//:main", ":libgaia_internal"],
 )
