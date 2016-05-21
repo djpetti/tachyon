@@ -22,7 +22,7 @@ constexpr int kBlockSize = 128;
 
 }  // namespace
 
-Pool::Pool(int size) {
+Pool::Pool(int size, bool clear /*= false*/) {
   // Allocate block of shared memory.
   int fd = shm_open(kShmName, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
   bool created = true;
@@ -33,7 +33,7 @@ Pool::Pool(int size) {
   }
   assert(fd >= 0 && "shm_open() failed.");
 
-  if (created) {
+  if (clear || created) {
     BuildNewPool(fd, size);
   } else {
     BuildExistingPool(fd, size);
