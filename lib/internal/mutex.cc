@@ -30,17 +30,6 @@ bool compare_exchange(Futex *futex, int32_t old_val, int32_t new_val) {
   return ret;
 }
 
-// Atomically decrements an integer.
-// Args:
-//  futex: The futex to decrement.
-void atomic_decrement(Futex *futex) {
-  __asm__ __volatile__("lock\n"
-                       "decl %0\n"
-                       :
-                       : "m"(*futex)
-                       : "memory" );
-}
-
 // Annoyingly, there is no Glibc wrapper for futex calls, so we have to make the
 // syscalls manually.
 // Args:
@@ -49,7 +38,7 @@ void atomic_decrement(Futex *futex) {
 //  val: Can mean different things, depending on the op. See the futex
 //  documentation for details.
 int futex(Futex *futex, int futex_op, int val) {
-  return syscall(SYS_futex, futex, futex_op, val);
+  return syscall(SYS_futex, futex, futex_op, val, nullptr);
 }
 
 }  // namespace
@@ -70,7 +59,7 @@ void mutex_grab(Mutex *mutex) {
       if (*state == 2 || compare_exchange(state, 1, 2)) {
         // There's still contention. Wait in the kernel.
         int futex_ret = futex(state, FUTEX_WAIT, 2);
-        assert((!futex_ret || futex_ret == EAGAIN) &&
+        assert((!futex_ret || errno == EAGAIN) &&
                "futex(FUTEX_WAIT) failed unexpectedly.");
       }
     } while (!compare_exchange(state, 0, 2));
@@ -82,13 +71,14 @@ void mutex_grab(Mutex *mutex) {
 
 void mutex_release(Mutex *mutex) {
   Futex *state = &(mutex->state);
-  assert(*state && "Releasing an unlocked mutex??");
 
-  atomic_decrement(state);
-  if (*state == 1) {
-    // It was 2.
-    // Actually release the lock.
-    *state = 0;
+  // If the lock is uncontended, this single atomic op is all we need to do to
+  // release it.
+  if (!compare_exchange(state, 1, 0)) {
+    // It can only go up in this function, so if the above failed, it must be 2,
+    // and we have to wake up someone.
+    assert(compare_exchange(state, 2, 0) && "Double-releasing lock?");
+
     // Wake someone up.
     int futex_ret = futex(state, FUTEX_WAKE, 1);
     assert(futex_ret >= 0 && "futex(FUTEX_WAKE) failed unexpectedly.");
