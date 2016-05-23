@@ -84,18 +84,19 @@ class Pool {
     int size;
     // The number of blocks in the pool.
     int num_blocks;
-    // Pointer to the block allocation array. This array keeps track of which
-    // blocks are allocated and which aren't. It basically functions as a
-    // bit field.
-    uint8_t *block_allocation;
     // The size of the block allocation array in bytes.
     int block_allocation_size;
-    // Pointer to the start of the actual pool data.
-    uint8_t *data;
   };
 
   // A pointer to our pool header.
   PoolHeader *header_;
+  // Pointer to the block allocation array. This array keeps track of which
+  // blocks are allocated and which aren't. It basically functions as a
+  // bit field.
+  uint8_t *block_allocation_;
+  // Pointer to the start of the actual pool data.
+  uint8_t *data_;
+
   // The total size of the memory allocation.
   int total_size_;
 
