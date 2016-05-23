@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "mutex.h"
+
 namespace gaia {
 namespace internal {
 
@@ -86,6 +88,8 @@ class Pool {
     int num_blocks;
     // The size of the block allocation array in bytes.
     int block_allocation_size;
+    // Use this lock to protect allocations.
+    Mutex allocation_lock;
   };
 
   // A pointer to our pool header.
