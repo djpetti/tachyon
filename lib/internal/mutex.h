@@ -6,6 +6,8 @@
 namespace gaia {
 namespace internal {
 
+// TODO (danielp): Priority-inversion futex calls.
+
 // Futex documentation requires four-byte alignment, even on 64-bit systems.
 typedef uint32_t Futex __attribute__((aligned(4)));
 
