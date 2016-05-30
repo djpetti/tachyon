@@ -20,9 +20,9 @@ int g_counter = 0;
 //  mutex: The mutex to use to protect counter operations.
 void TestThread(int add, Mutex &mutex) {
   for (int i = 0; i < 10000; ++i) {
-    mutex_grab(&mutex);
+    MutexGrab(&mutex);
     g_counter += add;
-    mutex_release(&mutex);
+    MutexRelease(&mutex);
   }
 }
 
@@ -33,7 +33,7 @@ class MutexTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
     // Initialize the mutex.
-    mutex_init(&mutex_);
+    MutexInit(&mutex_);
   }
 
   // Mutex for testing. We don't even bother to use shared memory here, since we
@@ -45,9 +45,9 @@ class MutexTest : public ::testing::Test {
 TEST_F(MutexTest, LockUnlockTest) {
   ASSERT_EQ(0u, mutex_.state);
 
-  mutex_grab(&mutex_);
+  MutexGrab(&mutex_);
   EXPECT_EQ(1u, mutex_.state);
-  mutex_release(&mutex_);
+  MutexRelease(&mutex_);
   EXPECT_EQ(0u, mutex_.state);
 }
 

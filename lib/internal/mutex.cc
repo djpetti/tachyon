@@ -19,7 +19,7 @@ namespace {
 // Returns:
 //  True if the operation succeeded and the futex was modified, false if it did
 //  not have the expected value and the operation failed.
-bool compare_exchange(Futex *futex, int32_t old_val, int32_t new_val) {
+bool CompareExchange(Futex *futex, int32_t old_val, int32_t new_val) {
   uint8_t ret;
   __asm__ __volatile__("lock\n"
                        "cmpxchgl %2, %1\n"
@@ -37,50 +37,50 @@ bool compare_exchange(Futex *futex, int32_t old_val, int32_t new_val) {
 //  futex_op: The futex op we are performing.
 //  val: Can mean different things, depending on the op. See the futex
 //  documentation for details.
-int futex(Futex *futex, int futex_op, int val) {
+int FutexCall(Futex *futex, int futex_op, int val) {
   return syscall(SYS_futex, futex, futex_op, val, nullptr);
 }
 
 }  // namespace
 
-void mutex_init(Mutex *mutex) {
+void MutexInit(Mutex *mutex) {
   mutex->state = 0;
 }
 
-void mutex_grab(Mutex *mutex) {
+void MutexGrab(Mutex *mutex) {
   Futex *state = &(mutex->state);
 
-  if (!compare_exchange(state, 0, 1)) {
+  if (!CompareExchange(state, 0, 1)) {
     // It wasn't zero, which means there's contention and we have to call into
     // the kernel.
     do {
       // We'll assume that the lock is still taken here, and try to set the
       // futex to 2 to indicate contention.
-      if (*state == 2 || compare_exchange(state, 1, 2)) {
+      if (*state == 2 || CompareExchange(state, 1, 2)) {
         // There's still contention. Wait in the kernel.
-        int futex_ret = futex(state, FUTEX_WAIT, 2);
+        int futex_ret = FutexCall(state, FUTEX_WAIT, 2);
         assert((!futex_ret || errno == EAGAIN) &&
                "futex(FUTEX_WAIT) failed unexpectedly.");
       }
-    } while (!compare_exchange(state, 0, 2));
+    } while (!CompareExchange(state, 0, 2));
     // Someone unlocking it sets it to zero, so we should only get here if we
     // successfully waited until someone unlocked the mutex and then grabbed
     // it.
   }
 }
 
-void mutex_release(Mutex *mutex) {
+void MutexRelease(Mutex *mutex) {
   Futex *state = &(mutex->state);
 
   // If the lock is uncontended, this single atomic op is all we need to do to
   // release it.
-  if (!compare_exchange(state, 1, 0)) {
-    // It can only go up in this function, so if the above failed, it must be 2,
-    // and we have to wake up someone.
-    assert(compare_exchange(state, 2, 0) && "Double-releasing lock?");
+  if (!CompareExchange(state, 1, 0)) {
+    // It can only go up while this function is running, so if the above failed,
+    // it must be 2, and we have to wake up someone.
+    assert(CompareExchange(state, 2, 0) && "Double-releasing lock?");
 
     // Wake someone up.
-    int futex_ret = futex(state, FUTEX_WAKE, 1);
+    int futex_ret = FutexCall(state, FUTEX_WAKE, 1);
     assert(futex_ret >= 0 && "futex(FUTEX_WAKE) failed unexpectedly.");
   }
 }

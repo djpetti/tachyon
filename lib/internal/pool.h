@@ -78,6 +78,13 @@ class Pool {
   //  True if it succeeds, false otherwise.
   bool Clear();
 
+  // Gets the block size for the pool. This is the minimum amount of data that
+  // can be allocated at one time. (Requesting less data will allocate one block
+  // regardless.)
+  // Returns:
+  //  The block size.
+  static constexpr int get_block_size();
+
  private:
   // An instance of this struct actually lives in SHM and keeps track of
   // everything the class needs to know.

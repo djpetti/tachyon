@@ -24,17 +24,17 @@ struct Mutex {
 // Initializes a new futex.
 // Args:
 //  mutex: The mutex to initialize.
-void mutex_init(Mutex *mutex);
+void MutexInit(Mutex *mutex);
 // Grabs the futex. Will block if the futex has already been grabbed. If there
 // is no contention, it does not leave userspace.
 // Args:
 //  mutex: The mutex to grab.
-void mutex_grab(Mutex *mutex);
+void MutexGrab(Mutex *mutex);
 // Releases the futex, waking the first thing that's waiting on the futex. If
 // nobody's waiting, it does not leave userspace.
 // Args:
 //  mutex: The mutex to release.
-void mutex_release(Mutex *mutex);
+void MutexRelease(Mutex *mutex);
 
 }  // namespace internal
 }  // namespace gaia
