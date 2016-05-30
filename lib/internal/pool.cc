@@ -40,7 +40,7 @@ Pool::Pool(int size, bool clear /*= false*/) {
   }
 
   // Initialize the mutex.
-  mutex_init(&(header_->allocation_lock));
+  MutexInit(&(header_->allocation_lock));
 }
 
 Pool::~Pool() {
@@ -92,7 +92,7 @@ void Pool::BuildExistingPool(int fd, int size) {
 
 uint8_t *Pool::Allocate(int size) {
   // Grab the lock while we're doing stuff.
-  mutex_grab(&(header_->allocation_lock));
+  MutexGrab(&(header_->allocation_lock));
 
   // We have to allocate in block units, so we can just divide this by the block
   // size to get the number of blocks.
@@ -172,13 +172,13 @@ uint8_t *Pool::Allocate(int size) {
     SetSegment(smallest_segment.start_index, smallest_segment.start_mask,
                smallest_segment.end_index, smallest_segment.end_mask, 1);
 
-    mutex_release(&(header_->allocation_lock));
+    MutexRelease(&(header_->allocation_lock));
 
     // Return the starting block.
     return data_ + smallest_segment.start_byte;
   }
 
-  mutex_release(&(header_->allocation_lock));
+  MutexRelease(&(header_->allocation_lock));
 
   // Not enough memory.
   return nullptr;
@@ -186,7 +186,7 @@ uint8_t *Pool::Allocate(int size) {
 
 void Pool::Free(uint8_t *block, int size) {
   // Grab the lock while we're doing stuff.
-  mutex_grab(&(header_->allocation_lock));
+  MutexGrab(&(header_->allocation_lock));
 
   // Set all the entries in the block allocation array for this segment to zero.
   const int start_byte = block - data_;
@@ -197,7 +197,11 @@ void Pool::Free(uint8_t *block, int size) {
 
   SetSegment(start_index, start_mask, end_index, end_mask, 0);
 
-  mutex_release(&(header_->allocation_lock));
+  MutexRelease(&(header_->allocation_lock));
+}
+
+static constexpr int get_block_size() {
+  return kBlockSize;
 }
 
 void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
