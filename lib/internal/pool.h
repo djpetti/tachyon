@@ -1,6 +1,7 @@
 #ifndef GAIA_LIB_INTERNAL_POOL_H_
 #define GAIA_LIB_INTERNAL_POOL_H_
 
+#include <assert.h>
 #include <stdint.h>
 
 #include "mutex.h"
@@ -71,6 +72,18 @@ class Pool {
   void FreeArray(T *array, int length) {
     uint8_t *raw = reinterpret_cast<uint8_t *>(array);
     Free(raw, sizeof(T) * length);
+  }
+  // Gets a valid pointer to the data located at a particular byte offset in the
+  // shared memory block.
+  // Args:
+  //  offset: The offset to look at.
+  // Returns:
+  //  A pointer to the data at that offset.
+  template <class T>
+  T *AtOffset(int offset) {
+    assert(offset < header_->size && "Out-of-bounds.");
+    uint8_t *byte = data_ + offset;
+    return reinterpret_cast<T *>(byte);
   }
 
   // Forcefully clears and reinitializes the shared memory block.
