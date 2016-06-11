@@ -1,4 +1,3 @@
-#include <functional>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -18,11 +17,11 @@ int g_counter = 0;
 // Args:
 //  add: The number to add to our counter.
 //  mutex: The mutex to use to protect counter operations.
-void TestThread(int add, Mutex &mutex) {
+void TestThread(int add, Mutex *mutex) {
   for (int i = 0; i < 10000; ++i) {
-    MutexGrab(&mutex);
+    MutexGrab(mutex);
     g_counter += add;
-    MutexRelease(&mutex);
+    MutexRelease(mutex);
   }
 }
 
@@ -56,10 +55,10 @@ TEST_F(MutexTest, StressTest) {
   // Make 8 threads for testing.
   ::std::thread threads[50];
   for (int i = 0; i < 25; ++i) {
-    threads[i] = ::std::thread(TestThread, 1, ::std::ref(mutex_));
+    threads[i] = ::std::thread(TestThread, 1, &mutex_);
   }
   for (int i = 25; i < 50; ++i) {
-    threads[i] = ::std::thread(TestThread, -1, ::std::ref(mutex_));
+    threads[i] = ::std::thread(TestThread, -1, &mutex_);
   }
 
   // Wait for everything to finish.
