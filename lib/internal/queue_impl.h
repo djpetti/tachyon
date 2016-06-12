@@ -1,3 +1,5 @@
+// NOTE: This file is not meant to be #included directly. Use queue.h instead.
+
 template <class T>
 Queue<T>::Queue()
     : Queue(nullptr) {}
@@ -13,7 +15,13 @@ Queue<T>::Queue(Pool *pool)
   queue_ = pool_->AllocateForType<RawQueue>();
   assert(queue_ != nullptr && "Out of memory?");
 
-  queue_->length = 0;
+  queue_->write_length = 0;
+  queue_->read_length = 0;
+  queue_->write_head = 0;
+  queue_->read_head = 0;
+  queue_->write_tail = 0;
+  queue_->read_tail = 0;
+
   queue_->head_index = 0;
   queue_->tail_index = 0;
 
@@ -38,13 +46,16 @@ Queue<T>::~Queue() {
 
 template <class T>
 bool Queue<T>::Enqueue(const T &item) {
-  MutexGrab(&(queue_->mutex));
-
-  if (queue_->length == kQueueCapacity) {
-    // Queue is full. There's nothing we can do here.
-    MutexRelease(&(queue_->mutex));
+  // Increment the write length now, to keep other writers from writing off the
+  // end.
+  const int32_t old_length = ExchangeAdd(&(queue_->write_length), 1);
+  if (old_length >= kQueueCapacity) {
+    // The queue is full. Decrement again and return without doing anything.
+    ExchangeAdd(&(queue_->write_length), -1);
     return false;
   }
+
+  MutexGrab(&(queue_->mutex));
 
   queue_->array[queue_->head_index] = item;
 
@@ -53,22 +64,27 @@ bool Queue<T>::Enqueue(const T &item) {
     // It wrapped.
     queue_->head_index = 0;
   }
-  ++queue_->length;
 
   MutexRelease(&(queue_->mutex));
+
+  // Only now is it safe to alert readers that we have a new element.
+  ExchangeAdd(&(queue_->read_length), 1);
 
   return true;
 }
 
 template <class T>
 bool Queue<T>::DequeueNext(T *item) {
-  MutexGrab(&(queue_->mutex));
-
-  if (!queue_->length) {
-    // Queue is empty.
-    MutexRelease(&(queue_->mutex));
+  // Decrement the read length now, to keep other readers from reading off the
+  // end.
+  const int32_t old_length = ExchangeAdd(&(queue_->read_length), -1);
+  if (old_length <= 0) {
+    // The queue is empty. Increment again and return without doing anything.
+    ExchangeAdd(&(queue_->read_length), 1);
     return false;
   }
+
+  MutexGrab(&(queue_->mutex));
 
   *item = queue_->array[queue_->tail_index];
 
@@ -77,9 +93,11 @@ bool Queue<T>::DequeueNext(T *item) {
     // It wrapped.
     queue_->tail_index = 0;
   }
-  --queue_->length;
 
   MutexRelease(&(queue_->mutex));
+
+  // Only now is it safe to alert writers that we have one fewer element.
+  ExchangeAdd(&(queue_->write_length), -1);
 
   return true;
 }

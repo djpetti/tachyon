@@ -1,6 +1,10 @@
 #ifndef GAIA_LIB_INTERNAL_QUEUE_H_
 #define GAIA_LIB_INTERNAL_QUEUE_H_
 
+#include <stdint.h>
+#include <stdio.h>  // TEMP
+
+#include "atomics.h"
 #include "mutex.h"
 #include "pool.h"
 
@@ -44,8 +48,8 @@ class Queue {
   // Args:
   //  item: The item to add to the queue.
   // Returns:
-  //  True if it succeeded in adding the item, false if the queue was full
-  //  already.
+  //  True if it succeeded in adding the item, false if the queue was
+  //  full already.
   bool Enqueue(const T &item);
 
   // Removes an element from the queue, without blocking.
@@ -69,13 +73,22 @@ class Queue {
   struct RawQueue {
     // The underlying array.
     T array[kQueueCapacity];
-    // Total length of the queue.
-    int length;
-    // Current index of the head.
-    int head_index;
-    // Current index of the tail.
-    int tail_index;
-    // Mutex for protecting accesses to the head and tail, and length.
+    // Total length of the queue visible to writers.
+    int32_t write_length;
+    // Total length of the queue visible to readers.
+    int32_t read_length;
+
+    // Current index of the head for writing.
+    int32_t write_head;
+    // Current index of the head for reading.
+    int32_t read_head;
+    // Current index of the tail for writing.
+    int32_t write_tail;
+    // Current index of the tail for reading.
+    int32_t read_tail;
+
+    int32_t head_index;
+    int32_t tail_index;
     Mutex mutex;
   };
 

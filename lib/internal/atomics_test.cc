@@ -1,6 +1,8 @@
-#include "atomics.h"
+#include <stdint.h>
 
 #include "gtest/gtest.h"
+
+#include "atomics.h"
 
 namespace gaia {
 namespace internal {
@@ -23,12 +25,19 @@ TEST_F(AtomicsTest, CompareExchangeTest) {
 
 // Make sure ExchangeAdd works properly.
 TEST_F(AtomicsTest, ExchangeAddTest) {
-  uint32_t value = 2;
-  EXPECT_EQ(2u, ExchangeAdd(&value, 1));
-  EXPECT_EQ(3u, value);
+  int32_t value = 2;
+  EXPECT_EQ(2, ExchangeAdd(&value, 1));
+  EXPECT_EQ(3, value);
 
-  EXPECT_EQ(3u, ExchangeAdd(&value, 2));
-  EXPECT_EQ(5u, value);
+  EXPECT_EQ(3, ExchangeAdd(&value, 2));
+  EXPECT_EQ(5, value);
+}
+
+// Make sure ExchangeAdd works with negative numbers.
+TEST_F(AtomicsTest, ExchangeSubtractTest) {
+  int32_t value = 2;
+  EXPECT_EQ(2, ExchangeAdd(&value, -1));
+  EXPECT_EQ(1, value);
 }
 
 }  // namespace testing

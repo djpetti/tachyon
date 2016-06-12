@@ -16,7 +16,7 @@ namespace {
 // Args:
 //  queue: The queue to use.
 void ProducerThread(Queue<int> *queue) {
-  for (int i = -5000; i <= 5000; ++i) {
+  for (int i = -1000; i <= 1000; ++i) {
     // We're doing non-blocking tests here, so we basically just spin around
     // until it works.
     while (!queue->Enqueue(i));
@@ -29,7 +29,7 @@ void ProducerThread(Queue<int> *queue) {
 //  queue: The queue to use.
 int ConsumerThread(Queue<int> *queue) {
   int total = 0;
-  for (int i = 0; i < 10001; ++i) {
+  for (int i = 0; i < 2001; ++i) {
     int compare;
     while (!queue->DequeueNext(&compare));
     total += compare;
