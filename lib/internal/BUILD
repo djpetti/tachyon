@@ -33,3 +33,10 @@ cc_test(
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
 )
+
+cc_test(
+  name = "atomics_test",
+  srcs = ["atomics_test.cc", "atomics.h"],
+  copts = ["-Iexternal/gtest/include"],
+  deps = ["@gtest//:main", ":libgaia_internal"],
+)
