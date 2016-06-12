@@ -6,29 +6,11 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include "atomics.h"
+
 namespace gaia {
 namespace internal {
 namespace {
-
-// Uses some assembly magic to perform an atomic compare-and-swap operation on
-// the futex.
-// Args:
-//  futex: The futex to check.
-//  old_val: The expected value of the futex.
-//  new_val: The value we want to change the futex to.
-// Returns:
-//  True if the operation succeeded and the futex was modified, false if it did
-//  not have the expected value and the operation failed.
-bool CompareExchange(Futex *futex, int32_t old_val, int32_t new_val) {
-  uint8_t ret;
-  __asm__ __volatile__("lock\n"
-                       "cmpxchgl %2, %1\n"
-                       "sete %0\n"
-                       : "=q"(ret), "=m"(*futex)
-                       : "r"(new_val), "m"(*futex), "a"(old_val)
-                       : "memory");
-  return ret;
-}
 
 // Annoyingly, there is no Glibc wrapper for futex calls, so we have to make the
 // syscalls manually.

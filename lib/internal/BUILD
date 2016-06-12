@@ -7,7 +7,7 @@ filegroup(
 
 cc_library(
   name = "libgaia_internal",
-  srcs = ["pool.cc", "mutex.cc"],
+  srcs = ["pool.cc", "mutex.cc", "atomics.cc"],
   hdrs = [":internal_hdrs"],
   linkopts = ["-lrt"],
 )
