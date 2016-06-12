@@ -24,7 +24,7 @@ bool CompareExchange(uint32_t *value, uint32_t old_val, uint32_t new_val);
 //  source: The source value.
 // Returns:
 //  The original value of dest before anything was added to it.
-uint32_t ExchangeAdd(uint32_t *dest, uint32_t source);
+int32_t ExchangeAdd(int32_t *dest, int32_t source);
 
 }  // namespace internal
 }  // namespace gaia

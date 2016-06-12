@@ -15,8 +15,8 @@ bool CompareExchange(uint32_t *value, uint32_t old_val, uint32_t new_val) {
   return ret;
 }
 
-uint32_t ExchangeAdd(uint32_t *dest, uint32_t source) {
-  uint32_t original;
+int32_t ExchangeAdd(int32_t *dest, int32_t source) {
+  int32_t original;
   __asm__ __volatile__(
       "lock\n"
       "xaddl %1, %2\n"
