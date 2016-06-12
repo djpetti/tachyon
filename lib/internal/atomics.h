@@ -17,6 +17,15 @@ namespace internal {
 //  not have the expected value and the operation failed.
 bool CompareExchange(uint32_t *value, uint32_t old_val, uint32_t new_val);
 
+// Exchanges the source and destination, and then loads the sum of the two into
+// the destination. It does this atomically.
+// Args:
+//  dest: The destination value.
+//  source: The source value.
+// Returns:
+//  The original value of dest before anything was added to it.
+uint32_t ExchangeAdd(uint32_t *dest, uint32_t source);
+
 }  // namespace internal
 }  // namespace gaia
 
