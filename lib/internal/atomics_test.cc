@@ -40,6 +40,20 @@ TEST_F(AtomicsTest, ExchangeSubtractTest) {
   EXPECT_EQ(1, value);
 }
 
+// Make sure Exchange woeks as expected.
+TEST_F(AtomicsTest, ExchangeTest) {
+  uint32_t value = 1;
+  Exchange(&value, 2);
+  EXPECT_EQ(2u, value);
+}
+
+// Make sure BitwiseAnd works properly.
+TEST_F(AtomicsTest, BitwiseAndTest) {
+  int32_t value = 0xFF;
+  BitwiseAnd(&value, 0xF0);
+  EXPECT_EQ(0xF0, value);
+}
+
 }  // namespace testing
 }  // namespace internal
 }  // namespace gaia

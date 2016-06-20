@@ -26,5 +26,23 @@ int32_t ExchangeAdd(int32_t *dest, int32_t source) {
   return original;
 }
 
+void Exchange(uint32_t *dest, uint32_t source) {
+  __asm__ __volatile__(
+      "lock\n"
+      "xchg %1, %0\n"
+      :
+      : "r"(source), "m"(*dest)
+      : "memory");
+}
+
+void BitwiseAnd(int32_t *dest, uint32_t mask) {
+  __asm__ __volatile__(
+      "lock\n"
+      "andl %0, %1\n"
+      :
+      : "r"(mask), "m"(*dest)
+      : "memory");
+}
+
 }  // namespace internal
 }  // namespace gaia
