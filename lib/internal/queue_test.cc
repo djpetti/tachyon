@@ -1,3 +1,4 @@
+#include <stdio.h>  // TEMP
 #include <future>
 #include <thread>
 
@@ -16,7 +17,7 @@ namespace {
 // Args:
 //  queue: The queue to use.
 void ProducerThread(Queue<int> *queue) {
-  for (int i = -1000; i <= 1000; ++i) {
+  for (int i = -3000; i <= 3000; ++i) {
     // We're doing non-blocking tests here, so we basically just spin around
     // until it works.
     while (!queue->Enqueue(i));
@@ -27,9 +28,10 @@ void ProducerThread(Queue<int> *queue) {
 // queue. The sequence is verified by checking that it sums to zero.
 // Args:
 //  queue: The queue to use.
-int ConsumerThread(Queue<int> *queue) {
+//  num_producers: The number of producers we have.
+int ConsumerThread(Queue<int> *queue, int num_producers) {
   int total = 0;
-  for (int i = 0; i < 2001; ++i) {
+  for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
     while (!queue->DequeueNext(&compare));
     total += compare;
@@ -58,7 +60,7 @@ class QueueTest : public ::testing::Test {
 // Test that we can enqueue items properly.
 TEST_F(QueueTest, EnqueueTest) {
   // Fill up the entire queue.
-  for (int i = 0; i < 50; ++i) {
+  for (int i = 0; i < Queue<int>::kQueueCapacity; ++i) {
     EXPECT_TRUE(queue_.Enqueue(i));
   }
 
@@ -112,7 +114,7 @@ TEST_F(QueueTest, SingleThreadTest) {
 // Test that we can use the queue normally with two threads.
 TEST_F(QueueTest, SPSCTest) {
   ::std::thread producer(ProducerThread, &queue_);
-  ::std::future<int> consumer_ret = ::std::async(&ConsumerThread, &queue_);
+  ::std::future<int> consumer_ret = ::std::async(&ConsumerThread, &queue_, 1);
 
   // Wait for them both to finish.
   EXPECT_EQ(0, consumer_ret.get());
@@ -120,22 +122,17 @@ TEST_F(QueueTest, SPSCTest) {
 }
 
 // Test that we can use the queue normally with lots of threads.
-TEST_F(QueueTest, MPMCTest) {
+TEST_F(QueueTest, MPSCTest) {
   ::std::thread producers[50];
-  ::std::future<int> consumers[50];
+  ::std::future<int> consumer = ::std::async(&ConsumerThread, &queue_, 50);
 
   // Make 50 thread pairs, all using the same queue.
   for (int i = 0; i < 50; ++i) {
     producers[i] = ::std::thread(ProducerThread, &queue_);
-    consumers[i] = ::std::async(&ConsumerThread, &queue_);
   }
 
-  // All the individual totals should sum to zero.
-  int total = 0;
-  for (int i = 0; i < 50; ++i) {
-    total += consumers[i].get();
-  }
-  EXPECT_EQ(0, total);
+  // Everything should sum to zero.
+  EXPECT_EQ(0, consumer.get());
 
   // Join all the producers.
   for (int i = 0; i < 50; ++i) {

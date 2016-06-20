@@ -26,6 +26,19 @@ bool CompareExchange(uint32_t *value, uint32_t old_val, uint32_t new_val);
 //  The original value of dest before anything was added to it.
 int32_t ExchangeAdd(int32_t *dest, int32_t source);
 
+// Exchanges the two arguments without doing any comparison.
+// Args:
+//  dest: The destination value.
+//  source: The value to change it to.
+void Exchange(uint32_t *dest, uint32_t source);
+
+// Performs an atomic bitwise AND operation on two 32-bit integers.
+// Args:
+//  dest: The first value to AND. This will be overwritten with the result of
+//  the operation.
+//  mask: The second value to AND.
+void BitwiseAnd(int32_t *dest, uint32_t mask);
+
 }  // namespace internal
 }  // namespace gaia
 

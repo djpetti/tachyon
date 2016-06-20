@@ -16,16 +16,11 @@ Queue<T>::Queue(Pool *pool)
   assert(queue_ != nullptr && "Out of memory?");
 
   queue_->write_length = 0;
-  queue_->read_length = 0;
-  queue_->write_head = 0;
-  queue_->read_head = 0;
-  queue_->write_tail = 0;
-  queue_->read_tail = 0;
-
   queue_->head_index = 0;
-  queue_->tail_index = 0;
 
-  MutexInit(&(queue_->mutex));
+  for (int i = 0; i < kQueueCapacity; ++i) {
+    queue_->array[i].valid = 0;
+  }
 }
 
 template <class T>
@@ -55,46 +50,46 @@ bool Queue<T>::Enqueue(const T &item) {
     return false;
   }
 
-  MutexGrab(&(queue_->mutex));
+  // Increment the write head to keep other writers from writing over this
+  // space.
+  int32_t old_head = ExchangeAdd(&(queue_->head_index), 1);
+  // The ANDing is so we can easily make our indices wrap when they reach the
+  // end of the physical array.
+  constexpr uint32_t mask =
+      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
+  BitwiseAnd(&(queue_->head_index), (1 << kQueueCapacityShifts) - 1);
+  // Technically, we need to do this for the index we're going to write to as
+  // well, in case a bunch of increments got run before their respective
+  // ANDings.
+  old_head &= mask;
 
-  queue_->array[queue_->head_index] = item;
-
-  ++queue_->head_index;
-  if (queue_->head_index >= kQueueCapacity) {
-    // It wrapped.
-    queue_->head_index = 0;
-  }
-
-  MutexRelease(&(queue_->mutex));
+  Node *write_at = queue_->array + old_head;
+  write_at->value = item;
 
   // Only now is it safe to alert readers that we have a new element.
-  ExchangeAdd(&(queue_->read_length), 1);
+  Exchange(&(write_at->valid), 1);
 
   return true;
 }
 
 template <class T>
 bool Queue<T>::DequeueNext(T *item) {
-  // Decrement the read length now, to keep other readers from reading off the
-  // end.
-  const int32_t old_length = ExchangeAdd(&(queue_->read_length), -1);
-  if (old_length <= 0) {
-    // The queue is empty. Increment again and return without doing anything.
-    ExchangeAdd(&(queue_->read_length), 1);
+  // Check that the space we want to read is actually valid.
+  Node *read_at = queue_->array + tail_index_;
+  if (!CompareExchange(&(read_at->valid), 1, 0)) {
+    // This means the space was not valid to begin with, and we have nothing
+    // left to read.
     return false;
   }
 
-  MutexGrab(&(queue_->mutex));
+  *item = read_at->value;
 
-  *item = queue_->array[queue_->tail_index];
-
-  ++queue_->tail_index;
-  if (queue_->tail_index >= kQueueCapacity) {
-    // It wrapped.
-    queue_->tail_index = 0;
-  }
-
-  MutexRelease(&(queue_->mutex));
+  ++tail_index_;
+  // The ANDing is so we can easily make our indices wrap when they reach the
+  // end of the physical array.
+  constexpr uint32_t mask =
+      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
+  tail_index_ &= mask;
 
   // Only now is it safe to alert writers that we have one fewer element.
   ExchangeAdd(&(queue_->write_length), -1);

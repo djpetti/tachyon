@@ -1,8 +1,10 @@
 #ifndef GAIA_LIB_INTERNAL_QUEUE_H_
 #define GAIA_LIB_INTERNAL_QUEUE_H_
 
+#include <assert.h>
 #include <stdint.h>
-#include <stdio.h>  // TEMP
+
+#include <limits>
 
 #include "atomics.h"
 #include "mutex.h"
@@ -29,6 +31,13 @@ namespace internal {
 template <class T>
 class Queue {
  public:
+  // How many items we want our queues to be able to hold. This constant
+  // designates how many times to << 1 in order to get that number.
+  static constexpr int kQueueCapacityShifts = 6; // 64
+  static constexpr int kQueueCapacity = 1 << kQueueCapacityShifts;
+  // Size to use when initializing the underlying pool.
+  static constexpr int kPoolSize = 2000000;
+
   Queue();
   // Constructor that makes a new queue but uses a pool that we pass in.
   // Args:
@@ -61,10 +70,13 @@ class Queue {
   bool DequeueNext(T *item);
 
  private:
-  // How many items we want our queues to be able to hold.
-  static constexpr int kQueueCapacity = 50;
-  // Size to use when initializing the underlying pool.
-  static constexpr int kPoolSize = 2000000;
+  // Represents an item in the queue.
+  struct Node {
+    // The actual item we want to store.
+    T value;
+    // A flag denoting whether this node contains valid data.
+    uint32_t valid;
+  };
 
   // This is the underlying structure that will be located in shared memory, and
   // contain everything that the queue needs to store in SHM. Multiple Queue
@@ -72,28 +84,19 @@ class Queue {
   // the same queue.
   struct RawQueue {
     // The underlying array.
-    T array[kQueueCapacity];
+    Node array[kQueueCapacity];
     // Total length of the queue visible to writers.
     int32_t write_length;
-    // Total length of the queue visible to readers.
-    int32_t read_length;
-
-    // Current index of the head for writing.
-    int32_t write_head;
-    // Current index of the head for reading.
-    int32_t read_head;
-    // Current index of the tail for writing.
-    int32_t write_tail;
-    // Current index of the tail for reading.
-    int32_t read_tail;
-
+    // Current index of the head.
     int32_t head_index;
-    int32_t tail_index;
-    Mutex mutex;
   };
 
   // Whether we own our pool or not.
   bool own_pool_ = true;
+
+  // For consumers, we can get away with storing the tail index locally since we
+  // only have one.
+  uint32_t tail_index_ = 0;
 
   RawQueue *queue_;
   // This is the shared memory pool that we will use to construct queue objects.
