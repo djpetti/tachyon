@@ -7,17 +7,26 @@
 #include <limits>
 
 #include "atomics.h"
-#include "mutex.h"
 #include "pool.h"
 
 namespace gaia {
 namespace internal {
 
+// MPSC: "Multi-producer, single consumer."
 // Should be pretty self-explanatory...
-// At the low level, a Queue is basically just a vector with the nodes
+//
+// At the low level, an MpscQueue is basically just a vector with the nodes
 // allocated in shared memory. Obviously, it's completely thread/process-safe.
 // Template specialization is used to make Queues that can handle arbitrary
 // types.
+//
+// NOTE: This should never be used directly!!! It's only there as a helper class
+// for standard Queues. This is because it's designed for only a single
+// consumer.
+//
+// Non-blocking operations on this queue are, of course, lock free and suitable
+// for realtime applications.
+//
 // A few tips to keep you out of trouble:
 // * If you're using a queue to send stuff between processes, don't send
 // anything that contains pointers through a queue, unless those pointers point
@@ -29,7 +38,7 @@ namespace internal {
 // operation on the size of the object, because it has to be copied into shared
 // memory, and then copied out again at the other end.
 template <class T>
-class Queue {
+class MpscQueue {
  public:
   // How many items we want our queues to be able to hold. This constant
   // designates how many times to << 1 in order to get that number.
@@ -38,22 +47,21 @@ class Queue {
   // Size to use when initializing the underlying pool.
   static constexpr int kPoolSize = 2000000;
 
-  Queue();
+  MpscQueue();
   // Constructor that makes a new queue but uses a pool that we pass in.
   // Args:
   //  pool: The pool to use.
-  explicit Queue(Pool *pool);
+  explicit MpscQueue(Pool *pool);
   // A similar contructor that fetches a queue stored at a particular location
   // in shared memory. Used internally by FetchQueue.
   // Args:
   //  queue_offset: The byte offset in the shared memory block of the underlying
   //  RawQueue object..
-  explicit Queue(int queue_offset);
-  ~Queue();
+  explicit MpscQueue(int queue_offset);
+  ~MpscQueue();
 
-  // Adds a new element to the queue, without blocking.
-  // TODO (danielp): I'm pretty sure this can be done entirely atomically,
-  // without mutexes.
+  // Adds a new element to the queue, without blocking. It is lock-free, and
+  // stays in userspace.
   // Args:
   //  item: The item to add to the queue.
   // Returns:
@@ -61,7 +69,8 @@ class Queue {
   //  full already.
   bool Enqueue(const T &item);
 
-  // Removes an element from the queue, without blocking.
+  // Removes an element from the queue, without blocking. It is lock-free, and
+  // stays in userspace.
   // Args:
   //  item: A place to copy the item.
   // Returns:
@@ -103,7 +112,7 @@ class Queue {
   Pool *pool_;
 };
 
-#include "queue_impl.h"
+#include "mpsc_queue_impl.h"
 
 }  // namespace internal
 }  // namespace gaia
