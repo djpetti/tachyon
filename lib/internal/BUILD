@@ -14,7 +14,7 @@ cc_library(
 
 cc_test(
   name = "pool_test",
-  srcs = ["pool_test.cc", "pool.h"],
+  srcs = ["pool_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
   linkopts = ["-lrt"],
@@ -22,21 +22,21 @@ cc_test(
 
 cc_test(
   name = "mutex_test",
-  srcs = ["mutex_test.cc", "mutex.h"],
+  srcs = ["mutex_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
 )
 
 cc_test(
-  name = "queue_test",
-  srcs = ["queue_test.cc", "queue.h"],
+  name = "mpsc_queue_test",
+  srcs = ["mpsc_queue_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
 )
 
 cc_test(
   name = "atomics_test",
-  srcs = ["atomics_test.cc", "atomics.h"],
+  srcs = ["atomics_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
 )

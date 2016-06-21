@@ -1,11 +1,10 @@
-#include <stdio.h>  // TEMP
 #include <future>
 #include <thread>
 
 #include <gtest/gtest.h>
 
 #include "pool.h"
-#include "queue.h"
+#include "mpsc_queue.h"
 
 namespace gaia {
 namespace internal {
@@ -16,7 +15,7 @@ namespace {
 // sequence on the queue.
 // Args:
 //  queue: The queue to use.
-void ProducerThread(Queue<int> *queue) {
+void ProducerThread(MpscQueue<int> *queue) {
   for (int i = -3000; i <= 3000; ++i) {
     // We're doing non-blocking tests here, so we basically just spin around
     // until it works.
@@ -29,7 +28,7 @@ void ProducerThread(Queue<int> *queue) {
 // Args:
 //  queue: The queue to use.
 //  num_producers: The number of producers we have.
-int ConsumerThread(Queue<int> *queue, int num_producers) {
+int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
   for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
@@ -43,9 +42,9 @@ int ConsumerThread(Queue<int> *queue, int num_producers) {
 }  // namespace
 
 // Tests for the queue.
-class QueueTest : public ::testing::Test {
+class MpscQueueTest : public ::testing::Test {
  public:
-  QueueTest() : pool_(kPoolSize, true), queue_(&pool_) {}
+  MpscQueueTest() : pool_(kPoolSize, true), queue_(&pool_) {}
 
  protected:
   // Size of the pool to use for testing.
@@ -54,13 +53,13 @@ class QueueTest : public ::testing::Test {
   // The pool to use for testing.
   Pool pool_;
   // The queue we are testing with.
-  Queue<int> queue_;
+  MpscQueue<int> queue_;
 };
 
 // Test that we can enqueue items properly.
-TEST_F(QueueTest, EnqueueTest) {
+TEST_F(MpscQueueTest, EnqueueTest) {
   // Fill up the entire queue.
-  for (int i = 0; i < Queue<int>::kQueueCapacity; ++i) {
+  for (int i = 0; i < MpscQueue<int>::kQueueCapacity; ++i) {
     EXPECT_TRUE(queue_.Enqueue(i));
   }
 
@@ -69,7 +68,7 @@ TEST_F(QueueTest, EnqueueTest) {
 }
 
 // Test that we can dequeue items properly.
-TEST_F(QueueTest, DequeueTest) {
+TEST_F(MpscQueueTest, DequeueTest) {
   // Put some items on the queue.
   for (int i = 0; i < 10; ++i) {
     ASSERT_TRUE(queue_.Enqueue(i));
@@ -87,7 +86,7 @@ TEST_F(QueueTest, DequeueTest) {
 }
 
 // Test that we can use the queue normally in a single-threaded case.
-TEST_F(QueueTest, SingleThreadTest) {
+TEST_F(MpscQueueTest, SingleThreadTest) {
   int dequeue_counter = 0;
   int on_queue;
   for (int i = 0; i < 20; i += 2) {
@@ -112,7 +111,7 @@ TEST_F(QueueTest, SingleThreadTest) {
 }
 
 // Test that we can use the queue normally with two threads.
-TEST_F(QueueTest, SPSCTest) {
+TEST_F(MpscQueueTest, SpscTest) {
   ::std::thread producer(ProducerThread, &queue_);
   ::std::future<int> consumer_ret = ::std::async(&ConsumerThread, &queue_, 1);
 
@@ -122,11 +121,11 @@ TEST_F(QueueTest, SPSCTest) {
 }
 
 // Test that we can use the queue normally with lots of threads.
-TEST_F(QueueTest, MPSCTest) {
+TEST_F(MpscQueueTest, MpscTest) {
   ::std::thread producers[50];
   ::std::future<int> consumer = ::std::async(&ConsumerThread, &queue_, 50);
 
-  // Make 50 thread pairs, all using the same queue.
+  // Make 50 producers, all using the same queue.
   for (int i = 0; i < 50; ++i) {
     producers[i] = ::std::thread(ProducerThread, &queue_);
   }

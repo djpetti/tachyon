@@ -1,11 +1,11 @@
-// NOTE: This file is not meant to be #included directly. Use queue.h instead.
+// NOTE: This file is not meant to be #included directly. Use mpsc_queue.h instead.
 
 template <class T>
-Queue<T>::Queue()
-    : Queue(nullptr) {}
+MpscQueue<T>::MpscQueue()
+    : MpscQueue(nullptr) {}
 
 template <class T>
-Queue<T>::Queue(Pool *pool)
+MpscQueue<T>::MpscQueue(Pool *pool)
     : own_pool_(false), pool_(pool) {
   if (!pool_) {
     pool_ = new Pool(kPoolSize);
@@ -24,14 +24,14 @@ Queue<T>::Queue(Pool *pool)
 }
 
 template <class T>
-Queue<T>::Queue(int queue_offset)
+MpscQueue<T>::MpscQueue(int queue_offset)
     : pool_(new Pool(kPoolSize)) {
   // Find the actual queue.
   queue_ = pool_->AtOffset<RawQueue *>(queue_offset);
 }
 
 template <class T>
-Queue<T>::~Queue() {
+MpscQueue<T>::~MpscQueue() {
   // If someone else passed in the pool, they own it, so we probably don't want
   // to delete it.
   if (own_pool_) {
@@ -40,7 +40,7 @@ Queue<T>::~Queue() {
 }
 
 template <class T>
-bool Queue<T>::Enqueue(const T &item) {
+bool MpscQueue<T>::Enqueue(const T &item) {
   // Increment the write length now, to keep other writers from writing off the
   // end.
   const int32_t old_length = ExchangeAdd(&(queue_->write_length), 1);
@@ -57,7 +57,7 @@ bool Queue<T>::Enqueue(const T &item) {
   // end of the physical array.
   constexpr uint32_t mask =
       ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
-  BitwiseAnd(&(queue_->head_index), (1 << kQueueCapacityShifts) - 1);
+  BitwiseAnd(&(queue_->head_index), mask);
   // Technically, we need to do this for the index we're going to write to as
   // well, in case a bunch of increments got run before their respective
   // ANDings.
@@ -73,7 +73,7 @@ bool Queue<T>::Enqueue(const T &item) {
 }
 
 template <class T>
-bool Queue<T>::DequeueNext(T *item) {
+bool MpscQueue<T>::DequeueNext(T *item) {
   // Check that the space we want to read is actually valid.
   Node *read_at = queue_->array + tail_index_;
   if (!CompareExchange(&(read_at->valid), 1, 0)) {
