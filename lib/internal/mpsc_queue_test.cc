@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include "constants.h"
 #include "pool.h"
 #include "mpsc_queue.h"
 
@@ -59,7 +60,7 @@ class MpscQueueTest : public ::testing::Test {
 // Test that we can enqueue items properly.
 TEST_F(MpscQueueTest, EnqueueTest) {
   // Fill up the entire queue.
-  for (int i = 0; i < MpscQueue<int>::kQueueCapacity; ++i) {
+  for (int i = 0; i < kQueueCapacity; ++i) {
     EXPECT_TRUE(queue_.Enqueue(i));
   }
 
