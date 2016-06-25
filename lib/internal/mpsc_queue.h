@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "atomics.h"
+#include "constants.h"
 #include "pool.h"
 
 namespace gaia {
@@ -26,27 +27,9 @@ namespace internal {
 //
 // Non-blocking operations on this queue are, of course, lock free and suitable
 // for realtime applications.
-//
-// A few tips to keep you out of trouble:
-// * If you're using a queue to send stuff between processes, don't send
-// anything that contains pointers through a queue, unless those pointers point
-// to something in shared memory.
-// * Queues will automatically size themselves appropriately for the objects
-// they are sending. However, be careful about sending large objects, because
-// you could run out of shared memory rather quickly.
-// * In a similar vein, sending anything through a Queue is technically an O(n)
-// operation on the size of the object, because it has to be copied into shared
-// memory, and then copied out again at the other end.
 template <class T>
 class MpscQueue {
  public:
-  // How many items we want our queues to be able to hold. This constant
-  // designates how many times to << 1 in order to get that number.
-  static constexpr int kQueueCapacityShifts = 6; // 64
-  static constexpr int kQueueCapacity = 1 << kQueueCapacityShifts;
-  // Size to use when initializing the underlying pool.
-  static constexpr int kPoolSize = 2000000;
-
   MpscQueue();
   // Constructor that makes a new queue but uses a pool that we pass in.
   // Args:
@@ -56,7 +39,7 @@ class MpscQueue {
   // in shared memory. Used internally by FetchQueue.
   // Args:
   //  queue_offset: The byte offset in the shared memory block of the underlying
-  //  RawQueue object..
+  //  RawQueue object.
   explicit MpscQueue(int queue_offset);
   ~MpscQueue();
 
@@ -68,7 +51,6 @@ class MpscQueue {
   //  True if it succeeded in adding the item, false if the queue was
   //  full already.
   bool Enqueue(const T &item);
-
   // Removes an element from the queue, without blocking. It is lock-free, and
   // stays in userspace.
   // Args:
@@ -78,13 +60,18 @@ class MpscQueue {
   //  already.
   bool DequeueNext(T *item);
 
+  // Gets the offset of the shared part of the queue in the shared memory pool.
+  // Returns:
+  //  The offset.
+  int GetOffset();
+
  private:
   // Represents an item in the queue.
   struct Node {
     // The actual item we want to store.
-    T value;
+    volatile T value;
     // A flag denoting whether this node contains valid data.
-    uint32_t valid;
+    volatile uint32_t valid;
   };
 
   // This is the underlying structure that will be located in shared memory, and
@@ -93,15 +80,15 @@ class MpscQueue {
   // the same queue.
   struct RawQueue {
     // The underlying array.
-    Node array[kQueueCapacity];
+    volatile Node array[kQueueCapacity];
     // Total length of the queue visible to writers.
-    int32_t write_length;
+    volatile int32_t write_length;
     // Current index of the head.
-    int32_t head_index;
+    volatile int32_t head_index;
   };
 
   // Whether we own our pool or not.
-  bool own_pool_ = true;
+  bool own_pool_ = false;
 
   // For consumers, we can get away with storing the tail index locally since we
   // only have one.
