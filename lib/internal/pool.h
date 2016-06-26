@@ -85,6 +85,12 @@ class Pool {
     uint8_t *byte = data_ + offset;
     return reinterpret_cast<T *>(byte);
   }
+  // Gets the offset in the pool of a pointer into pool memory.
+  // Args:
+  //  shared_object: The pointer to get the offset for.
+  // Returns:
+  //  The calculated offset.
+  int GetOffset(const void *shared_object);
 
   // Forcefully clears and reinitializes the shared memory block.
   // Returns:

@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "macros.h"
+
 namespace gaia {
 namespace internal {
 namespace {
@@ -53,8 +55,9 @@ void Pool::BuildNewPool(int fd, int size) {
                          &header_overhead);
 
   // It turns out we actually have to make it the size we want.
-  assert(ftruncate(fd, data_size + header_overhead) >= 0 &&
-         "ftruncate() failed.");
+  const int truncate_ret = ftruncate(fd, data_size + header_overhead);
+  assert(truncate_ret >= 0 && "ftruncate() failed.");
+  _UNUSED(truncate_ret);
 
   // Our pool header will start from the very beginning of the pool.
   header_ = reinterpret_cast<PoolHeader *>(pool);
@@ -90,6 +93,8 @@ void Pool::BuildExistingPool(int fd, int size) {
 }
 
 uint8_t *Pool::Allocate(int size) {
+  assert(size && "Allocating zero-length block?");
+
   // Grab the lock while we're doing stuff.
   MutexGrab(&(header_->allocation_lock));
 
@@ -106,8 +111,9 @@ uint8_t *Pool::Allocate(int size) {
   bool set_segment = false;
   int segment_size = 0;
   int smallest_size = INT_MAX;
-  uint8_t start_mask, start_mask_shifts;
-  int start_index;
+  uint8_t start_mask = 0;
+  uint8_t start_mask_shifts = 0;
+  int start_index = -1;
   // Stores information about segments.
   struct Segment {
     // Starting bit mask.
@@ -120,7 +126,9 @@ uint8_t *Pool::Allocate(int size) {
     int end_index;
     // The actual start byte of this segment in data_.
     int start_byte;
-  } segment, smallest_segment;
+  };
+  Segment segment = {0, 0, -1, -1, -1};
+  Segment smallest_segment = segment;
 
   for (int i = 0; i < header_->block_allocation_size; ++i) {
     uint8_t mask_shifts = 0;
@@ -267,6 +275,10 @@ uint8_t *Pool::MapShm(int size, int fd, int *data_size, int *num_blocks,
                         MAP_SHARED | MAP_LOCKED, fd, 0);
   assert(raw_pool != MAP_FAILED && "mmap failed.");
   return static_cast<uint8_t *>(raw_pool);
+}
+
+int Pool::GetOffset(const void *shared_object) {
+  return reinterpret_cast<const uint8_t *>(shared_object) - data_;
 }
 
 }  // namespace internal

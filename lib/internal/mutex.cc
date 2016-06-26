@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "atomics.h"
+#include "macros.h"
 
 namespace gaia {
 namespace internal {
@@ -40,9 +41,10 @@ void MutexGrab(Mutex *mutex) {
       // futex to 2 to indicate contention.
       if (*state == 2 || CompareExchange(state, 1, 2)) {
         // There's still contention. Wait in the kernel.
-        int futex_ret = FutexCall(state, FUTEX_WAIT, 2);
+        const int futex_ret = FutexCall(state, FUTEX_WAIT, 2);
         assert((!futex_ret || errno == EAGAIN) &&
                "futex(FUTEX_WAIT) failed unexpectedly.");
+        _UNUSED(futex_ret);
       }
     } while (!CompareExchange(state, 0, 2));
     // Someone unlocking it sets it to zero, so we should only get here if we
@@ -59,11 +61,14 @@ void MutexRelease(Mutex *mutex) {
   if (!CompareExchange(state, 1, 0)) {
     // It can only go up while this function is running, so if the above failed,
     // it must be 2, and we have to wake up someone.
-    assert(CompareExchange(state, 2, 0) && "Double-releasing lock?");
+    const int cas_ret = CompareExchange(state, 2, 0);
+    assert(cas_ret && "Double-releasing lock?");
+    _UNUSED(cas_ret);
 
     // Wake someone up.
-    int futex_ret = FutexCall(state, FUTEX_WAKE, 1);
+    const int futex_ret = FutexCall(state, FUTEX_WAKE, 1);
     assert(futex_ret >= 0 && "futex(FUTEX_WAKE) failed unexpectedly.");
+    _UNUSED(futex_ret);
   }
 }
 
