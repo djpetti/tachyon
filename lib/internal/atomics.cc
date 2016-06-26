@@ -5,7 +5,7 @@ namespace internal {
 
 bool CompareExchange(volatile uint32_t *value, uint32_t old_val,
                      uint32_t new_val) {
-  uint8_t ret;
+  volatile uint8_t ret;
   __asm__ __volatile__(
       "lock\n"
       "cmpxchgl %2, %1\n"
@@ -17,7 +17,7 @@ bool CompareExchange(volatile uint32_t *value, uint32_t old_val,
 }
 
 int32_t ExchangeAdd(volatile int32_t *dest, int32_t source) {
-  int32_t original;
+  volatile int32_t original;
   __asm__ __volatile__(
       "lock\n"
       "xaddl %1, %2\n"
