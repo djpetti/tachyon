@@ -54,6 +54,13 @@ TEST_F(AtomicsTest, BitwiseAndTest) {
   EXPECT_EQ(0xF0, value);
 }
 
+// Make sure Decrement works properly.
+TEST_F(AtomicsTest, DecrementTest) {
+  int32_t value = 2;
+  Decrement(&value);
+  EXPECT_EQ(1, value);
+}
+
 }  // namespace testing
 }  // namespace internal
 }  // namespace gaia

@@ -40,3 +40,10 @@ cc_test(
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
 )
+
+cc_test(
+  name = "queue_test",
+  srcs = ["queue_test.cc"],
+  copts = ["-Iexternal/gtest/include"],
+  deps = ["@gtest//:main", ":libgaia_internal"],
+)

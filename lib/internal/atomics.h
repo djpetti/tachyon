@@ -43,7 +43,7 @@ void BitwiseAnd(volatile int32_t *dest, uint32_t mask);
 // Perform an atomic increment operation.
 // Args:
 //  value: The number to increment.
-void Increment(volatile int32_t *value);
+void Decrement(volatile int32_t *value);
 
 // Forces all loads/stores that are before this call to complete before the
 // call, and all the ones that are after the call to complete after the call.

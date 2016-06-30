@@ -45,10 +45,10 @@ void BitwiseAnd(volatile int32_t *dest, uint32_t mask) {
       : "memory");
 }
 
-void Increment(volatile int32_t *value) {
+void Decrement(volatile int32_t *value) {
   __asm__ __volatile__(
       "lock\n"
-      "incl %1\n"
+      "decl %1\n"
       : "=m"(*value)
       : "m"(*value)
       : "memory");

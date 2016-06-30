@@ -90,7 +90,7 @@ class Pool {
   //  shared_object: The pointer to get the offset for.
   // Returns:
   //  The calculated offset.
-  int GetOffset(const void *shared_object);
+  int GetOffset(const void *shared_object) const;
 
   // Forcefully clears and reinitializes the shared memory block.
   // Returns:
