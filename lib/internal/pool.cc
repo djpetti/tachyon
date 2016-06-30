@@ -277,7 +277,7 @@ uint8_t *Pool::MapShm(int size, int fd, int *data_size, int *num_blocks,
   return static_cast<uint8_t *>(raw_pool);
 }
 
-int Pool::GetOffset(const void *shared_object) {
+int Pool::GetOffset(const void *shared_object) const {
   return reinterpret_cast<const uint8_t *>(shared_object) - data_;
 }
 

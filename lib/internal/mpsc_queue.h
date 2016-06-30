@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_INTERNAL_QUEUE_H_
-#define GAIA_LIB_INTERNAL_QUEUE_H_
+#ifndef GAIA_LIB_INTERNAL_MPSC_QUEUE_H_
+#define GAIA_LIB_INTERNAL_MPSC_QUEUE_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -41,7 +41,37 @@ class MpscQueue {
   //  queue_offset: The byte offset in the shared memory block of the underlying
   //  RawQueue object.
   explicit MpscQueue(int queue_offset);
+  // Yet another constructor that combines the attributes of the two immediately
+  // above it.
+  // Args:
+  //  pool: The pool to use.
+  //  queue_offset: The byte offset in the shared memory block of the underlying
+  //  RawQueue object.
+  MpscQueue(Pool *pool, int queue_offset);
   ~MpscQueue();
+
+  // Allows a user to "reserve" a place in the queue. Using this method will
+  // save a space in the queue that nobody can write over, but which also can't
+  // be read. If it succeeds, the next call to EnqueueAt() (from this thread)
+  // will add an item in this spot. Otherwise, CancelReservation() can be used
+  // to remove the reservation if you don't want to use it. This method does not
+  // block.
+  // IMPORTANT: If this method returns true, you MUST either call
+  // CancelReservation or EnqueueAt afterwards!
+  // Returns:
+  //  True if it succeeds in reserving a spot, false if there is not space.
+  bool Reserve();
+  // Allows a user to enqueue and element at the spot they previously reserved.
+  // IMPORTANT: The user MUST have successfully reserved a spot with Reserve(),
+  // otherwise the behavior of this method is undefined.
+  // Args:
+  //  item: The item to add to the queue.
+  void EnqueueAt(const T &item);
+  // Allows a user to cancel a reservation previously made with Reserve().
+  // IMPORTANT: The user MUST have successfully reserved a spot with Reserve(),
+  // otherwise the behavior of this method will drop legitimate elements from
+  // the queue.
+  void CancelReservation();
 
   // Adds a new element to the queue, without blocking. It is lock-free, and
   // stays in userspace.
@@ -63,7 +93,7 @@ class MpscQueue {
   // Gets the offset of the shared part of the queue in the shared memory pool.
   // Returns:
   //  The offset.
-  int GetOffset();
+  int GetOffset() const;
 
  private:
   // Represents an item in the queue.
@@ -104,4 +134,4 @@ class MpscQueue {
 }  // namespace internal
 }  // namespace gaia
 
-#endif  // GAIA_LIB_INTERNAL_QUEUE_H_
+#endif  // GAIA_LIB_INTERNAL_MPSC_QUEUE_H_

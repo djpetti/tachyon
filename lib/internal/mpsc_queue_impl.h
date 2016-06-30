@@ -27,9 +27,13 @@ MpscQueue<T>::MpscQueue(Pool *pool)
 
 template <class T>
 MpscQueue<T>::MpscQueue(int queue_offset)
-    : pool_(new Pool(kPoolSize)) {
+    : MpscQueue(new Pool(kPoolSize), queue_offset) {}
+
+template <class T>
+MpscQueue<T>::MpscQueue(Pool *pool, int queue_offset)
+    : pool_(pool) {
   // Find the actual queue.
-  queue_ = pool_->AtOffset<RawQueue *>(queue_offset);
+  queue_ = pool_->AtOffset<RawQueue>(queue_offset);
 }
 
 template <class T>
@@ -42,17 +46,22 @@ MpscQueue<T>::~MpscQueue() {
 }
 
 template <class T>
-bool MpscQueue<T>::Enqueue(const T &item) {
+bool MpscQueue<T>::Reserve() {
   // Increment the write length now, to keep other writers from writing off the
   // end.
   const int32_t old_length = ExchangeAdd(&(queue_->write_length), 1);
   Fence();
   if (old_length >= kQueueCapacity) {
     // The queue is full. Decrement again and return without doing anything.
-    ExchangeAdd(&(queue_->write_length), -1);
+    Decrement(&(queue_->write_length));
     return false;
   }
 
+  return true;
+}
+
+template <class T>
+void MpscQueue<T>::EnqueueAt(const T &item) {
   // Increment the write head to keep other writers from writing over this
   // space.
   int32_t old_head = ExchangeAdd(&(queue_->head_index), 1);
@@ -73,6 +82,20 @@ bool MpscQueue<T>::Enqueue(const T &item) {
   // Only now is it safe to alert readers that we have a new element.
   Fence();
   Exchange(&(write_at->valid), 1);
+}
+
+template <class T>
+void MpscQueue<T>::CancelReservation() {
+  // Decrementing write_length lets other people write over this space again.
+  Decrement(&(queue_->write_length));
+}
+
+template <class T>
+bool MpscQueue<T>::Enqueue(const T &item) {
+  if (!Reserve()) {
+    return false;
+  }
+  EnqueueAt(item);
 
   return true;
 }
@@ -104,6 +127,6 @@ bool MpscQueue<T>::DequeueNext(T *item) {
 }
 
 template <class T>
-int MpscQueue<T>::GetOffset() {
+int MpscQueue<T>::GetOffset() const {
   return pool_->GetOffset(queue_);
 }
