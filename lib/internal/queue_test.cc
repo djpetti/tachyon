@@ -17,10 +17,9 @@ namespace {
 // A queue producer thread. It just runs in a loop and sticks a
 // sequence on the queue.
 // Args:
-//  pool: The pool to use for making the queue.
 //  offset: The SHM offset of the queue to use.
-void ProducerThread(Pool *pool, int offset) {
-  Queue<int> queue(pool, offset, false);
+void ProducerThread(int offset) {
+  Queue<int> queue(offset, false);
 
   for (int i = -3000; i <= 3000; ++i) {
     // We're doing non-blocking tests here, so we basically just spin around
@@ -32,11 +31,10 @@ void ProducerThread(Pool *pool, int offset) {
 // A queue consumer thread. It just runs in a loop and reads a sequence off the
 // queue. The sequence is verified by checking that it sums to zero.
 // Args:
-//  pool: The pool to use for making the queue.
 //  offset: The SHM offset of the queue to use.
 //  num_producers: The number of producers we have.
-int ConsumerThread(Pool *pool, int offset, int num_producers) {
-  Queue<int> queue(pool, offset);
+int ConsumerThread(int offset, int num_producers) {
+  Queue<int> queue(offset);
 
   int total = 0;
   for (int i = 0; i < 6001 * num_producers; ++i) {
@@ -52,15 +50,14 @@ int ConsumerThread(Pool *pool, int offset, int num_producers) {
 
 // Tests for the queue.
 class QueueTest : public ::testing::Test {
- public:
-  QueueTest() : pool_(kPoolSize, true), queue_(&pool_) {}
-
  protected:
-  // Size of the pool to use for testing.
-  static constexpr int kPoolSize = sizeof(int) * 1000;
+  QueueTest() = default;
 
-  // The pool to use for testing.
-  Pool pool_;
+  static void TearDownTestCase() {
+    // Unlink SHM.
+    ASSERT_TRUE(Pool::Unlink());
+  }
+
   // The queue we are testing with.
   Queue<int> queue_;
 };
@@ -122,16 +119,13 @@ TEST_F(QueueTest, SingleThreadTest) {
 // Test that we can use the queue normally with two threads.
 TEST_F(QueueTest, SpscTest) {
   // Since Queue classes have some local state involved on both the producer and
-  // consumer sides, we need to use separate queue instances. This is
-  // complicated by the fact that mmap does not like mapping the same SHM
-  // segment twice in the same process, so we have to explicitly tell it to use
-  // the same pool instance.
-  Queue<int> queue(&pool_, false);
+  // consumer sides, we need to use separate queue instances.
+  Queue<int> queue(false);
   const int queue_offset = queue.GetOffset();
 
-  ::std::thread producer(ProducerThread, &pool_, queue_offset);
+  ::std::thread producer(ProducerThread, queue_offset);
   ::std::future<int> consumer_ret =
-      ::std::async(&ConsumerThread, &pool_, queue_offset, 1);
+      ::std::async(&ConsumerThread, queue_offset, 1);
 
   // Wait for them both to finish.
   EXPECT_EQ(0, consumer_ret.get());
@@ -140,16 +134,16 @@ TEST_F(QueueTest, SpscTest) {
 
 // Test that we can use the queue normally with lots of threads.
 TEST_F(QueueTest, MpmcTest) {
-  Queue<int> queue(&pool_, false);
+  Queue<int> queue(false);
   const int queue_offset = queue.GetOffset();
 
   ::std::thread producers[50];
-  ::std::future<int> consumer = ::std::async(&ConsumerThread, &pool_,
-                                             queue_offset, 50);
+  ::std::future<int> consumer =
+      ::std::async(&ConsumerThread, queue_offset, 50);
 
   // Make 50 producers, all using the same queue.
   for (int i = 0; i < 50; ++i) {
-    producers[i] = ::std::thread(ProducerThread, &pool_, queue_offset);
+    producers[i] = ::std::thread(ProducerThread, queue_offset);
   }
 
   // Everything should sum to zero.

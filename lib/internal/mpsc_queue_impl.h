@@ -2,17 +2,7 @@
 
 template <class T>
 MpscQueue<T>::MpscQueue()
-    : MpscQueue(nullptr) {}
-
-template <class T>
-MpscQueue<T>::MpscQueue(Pool *pool)
-    : pool_(pool) {
-  if (!pool_) {
-    // Make our own pool.
-    pool_ = new Pool(kPoolSize);
-    own_pool_ = true;
-  }
-
+    : pool_(Pool::GetPool(kPoolSize)) {
   // Allocate the shared memory we need.
   queue_ = pool_->AllocateForType<RawQueue>();
   assert(queue_ != nullptr && "Out of shared memory?");
@@ -27,22 +17,9 @@ MpscQueue<T>::MpscQueue(Pool *pool)
 
 template <class T>
 MpscQueue<T>::MpscQueue(int queue_offset)
-    : MpscQueue(new Pool(kPoolSize), queue_offset) {}
-
-template <class T>
-MpscQueue<T>::MpscQueue(Pool *pool, int queue_offset)
-    : pool_(pool) {
+    : pool_(Pool::GetPool(kPoolSize)) {
   // Find the actual queue.
   queue_ = pool_->AtOffset<RawQueue>(queue_offset);
-}
-
-template <class T>
-MpscQueue<T>::~MpscQueue() {
-  // If someone else passed in the pool, they own it, so we probably don't want
-  // to delete it.
-  if (own_pool_) {
-    delete(pool_);
-  }
 }
 
 template <class T>

@@ -12,7 +12,9 @@ namespace internal {
 static constexpr int kQueueCapacityShifts = 6; // 64
 static constexpr int kQueueCapacity = 1 << kQueueCapacityShifts;
 // Size to use when initializing the underlying pool.
-static constexpr int kPoolSize = 2000000;
+// TODO (danielp): This will have to be increased eventually for actual Gaia
+// stuff.
+static constexpr int kPoolSize = 64000;
 // The maximum number of consumers a queue can have.
 static constexpr int kMaxConsumers = 64;
 
