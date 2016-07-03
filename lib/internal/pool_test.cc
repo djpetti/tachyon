@@ -13,18 +13,28 @@ class PoolTest : public ::testing::Test {
  protected:
   static const int kPoolSize = 1000;
 
-  PoolTest() : pool_(kPoolSize, true) {}
+  PoolTest() : pool_(Pool::GetPool(kPoolSize)) {}
+
+  virtual void SetUp() {
+    // Clear the pool in between, so tests don't affect each-other.
+    pool_->Clear();
+  }
+
+  static void TearDownTestCase() {
+    // Unlink SHM.
+    ASSERT_TRUE(Pool::Unlink());
+  }
 
   // Pool instance to use for testing.
-  Pool pool_;
+  Pool *pool_;
 };
 
 // Make sure we can allocate shared memory from the pool.
 TEST_F(PoolTest, AllocationTest) {
-  int *shared_int = pool_.AllocateForType<int>();
+  int *shared_int = pool_->AllocateForType<int>();
   *shared_int = 42;
 
-  int *another_int = pool_.AllocateForType<int>();
+  int *another_int = pool_->AllocateForType<int>();
   *another_int = 1337;
   // Make sure it gave us different blocks.
   EXPECT_EQ(42, *shared_int);
@@ -38,20 +48,20 @@ TEST_F(PoolTest, AllocationTest) {
 TEST_F(PoolTest, OverusedPoolTest) {
   // We'll have ask for 8 separate blocks to use up all our memory.
   for (int i = 0; i < 8; ++i) {
-    EXPECT_NE(nullptr, pool_.AllocateForType<int>());
+    EXPECT_NE(nullptr, pool_->AllocateForType<int>());
   }
 
   // Now, our next allocation should fail.
-  EXPECT_EQ(nullptr, pool_.AllocateForType<int>());
+  EXPECT_EQ(nullptr, pool_->AllocateForType<int>());
 }
 
 // Make sure we can free objects as well as allocate them.
 TEST_F(PoolTest, FreeTest) {
-  int *shared_int = pool_.AllocateForType<int>();
+  int *shared_int = pool_->AllocateForType<int>();
   *shared_int = 42;
-  pool_.FreeType<int>(shared_int);
+  pool_->FreeType<int>(shared_int);
 
-  int *another_int = pool_.AllocateForType<int>();
+  int *another_int = pool_->AllocateForType<int>();
   *another_int = 1337;
   // It should have re-used the memory that was previously allocated.
   EXPECT_EQ(another_int, shared_int);
@@ -60,7 +70,7 @@ TEST_F(PoolTest, FreeTest) {
 // Make sure that different pool instances stay in sync.
 TEST_F(PoolTest, SharedTest) {
   // Allocate some data in our current pool.
-  int *shared_int = pool_.AllocateForType<int>();
+  int *shared_int = pool_->AllocateForType<int>();
   *shared_int = 42;
 
   // Create a new pool.
@@ -76,14 +86,14 @@ TEST_F(PoolTest, SharedTest) {
 
 // Make sure that allocating a region spanning multiple blocks works.
 TEST_F(PoolTest, MultiBlockAllocationTest) {
-  int *shared_array = pool_.AllocateForArray<int>(64);
+  int *shared_array = pool_->AllocateForArray<int>(64);
   // Make sure we can write to every single element.
   for (int i = 0; i < 64; ++i) {
     shared_array[i] = i;
   }
 
   // Make sure we can still allocate more without overlapping.
-  int *shared_int = pool_.AllocateForType<int>();
+  int *shared_int = pool_->AllocateForType<int>();
   *shared_int = 1337;
   for (int i = 0; i < 64; ++i) {
     EXPECT_EQ(i, shared_array[i]);

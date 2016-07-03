@@ -3,10 +3,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include <mutex>
 
 #include "macros.h"
 
@@ -21,9 +24,15 @@ const char *kShmName = "/gaia_core";
 // an integer multiple of this number.
 constexpr int kBlockSize = 128;
 
+// Once flag to use for calling CreateSingletonPool.
+::std::once_flag singleton_pool_once_flag;
+
 }  // namespace
 
-Pool::Pool(int size, bool clear /*= false*/) {
+// Static members have to be initialized, or we have linker issues.
+Pool *Pool::singleton_pool_ = nullptr;
+
+Pool::Pool(int size) {
   // Allocate block of shared memory.
   int fd = shm_open(kShmName, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
   bool created = true;
@@ -34,7 +43,7 @@ Pool::Pool(int size, bool clear /*= false*/) {
   }
   assert(fd >= 0 && "shm_open() failed.");
 
-  if (clear || created) {
+  if (created) {
     BuildNewPool(fd, size);
   } else {
     BuildExistingPool(fd, size);
@@ -50,8 +59,8 @@ Pool::~Pool() {
 }
 
 void Pool::BuildNewPool(int fd, int size) {
-  int data_size, num_blocks, block_bytes, header_overhead;
-  uint8_t *pool = MapShm(size, fd, &data_size, &num_blocks, &block_bytes,
+  int data_size, num_blocks, header_overhead;
+  uint8_t *pool = MapShm(size, fd, &data_size, &num_blocks, &block_bytes_,
                          &header_overhead);
 
   // It turns out we actually have to make it the size we want.
@@ -66,20 +75,16 @@ void Pool::BuildNewPool(int fd, int size) {
 
   // The block allocation array starts right after the header.
   block_allocation_ = pool + sizeof(PoolHeader);
-  // Right now, nothing is allocated, so that array should be completely
-  // zeroed
-  // out.
-  memset(block_allocation_, 0, block_bytes);
+  // Nothing is allocated initially.
+  Clear();
 
   // Mark where our actual data starts.
   data_ = pool + header_overhead;
-
-  header_->block_allocation_size = block_bytes;
 }
 
 void Pool::BuildExistingPool(int fd, int size) {
-  int data_size, num_blocks, block_bytes, header_overhead;
-  uint8_t *pool = MapShm(size, fd, &data_size, &num_blocks, &block_bytes,
+  int data_size, num_blocks, header_overhead;
+  uint8_t *pool = MapShm(size, fd, &data_size, &num_blocks, &block_bytes_,
                          &header_overhead);
 
   header_ = reinterpret_cast<PoolHeader *>(pool);
@@ -130,7 +135,7 @@ uint8_t *Pool::Allocate(int size) {
   Segment segment = {0, 0, -1, -1, -1};
   Segment smallest_segment = segment;
 
-  for (int i = 0; i < header_->block_allocation_size; ++i) {
+  for (int i = 0; i < block_bytes_; ++i) {
     uint8_t mask_shifts = 0;
     for (uint8_t mask = 1; mask != 0; mask <<= 1) {
       if ((block_allocation_[i] & mask) && in_free_segment) {
@@ -211,6 +216,17 @@ static constexpr int get_block_size() {
   return kBlockSize;
 }
 
+Pool *Pool::GetPool(int size) {
+  // Create the singleton pool.
+  ::std::call_once(singleton_pool_once_flag, CreateSingletonPool, size);
+
+  return singleton_pool_;
+}
+
+bool Pool::Unlink() {
+  return !shm_unlink(kShmName);
+}
+
 void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
                       uint8_t end_mask, uint8_t value) {
   // We need to adapt our masks first so that we can actually use them to set
@@ -279,6 +295,24 @@ uint8_t *Pool::MapShm(int size, int fd, int *data_size, int *num_blocks,
 
 int Pool::GetOffset(const void *shared_object) const {
   return reinterpret_cast<const uint8_t *>(shared_object) - data_;
+}
+
+void Pool::Clear() {
+  // Effectively clearing the pool is as simple as zeroing the block allocation
+  // array.
+  memset(block_allocation_, 0, block_bytes_);
+}
+
+void Pool::CreateSingletonPool(int size) {
+  // We never actually delete this.
+  singleton_pool_ = new Pool(size);
+
+  // Tell it to delete the pool when the process exits, for good measure.
+  atexit(DeleteSingletonPool);
+}
+
+void Pool::DeleteSingletonPool() {
+  delete singleton_pool_;
 }
 
 }  // namespace internal

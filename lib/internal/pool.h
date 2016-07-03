@@ -8,22 +8,14 @@
 
 namespace gaia {
 namespace internal {
+// So we can friend tests...
+namespace testing {
+  class PoolTest_SharedTest_Test;
+}
 
 // Manages a pool of shared memory that queue messages are made from.
 class Pool {
  public:
-  // Creates a new pool, or links to an already existing one.
-  // Args:
-  //  size: The size in bytes of the pool to make. Important: If the pool
-  //  already exists, this MUST BE THE SAME as the size used to create it,
-  //  otherwise Allocate() might not give you blocks that are actually mapped in
-  //  shared memory.
-  //  clear: If this is true, it truncates the entire memory region before
-  //  initializing it, otherwise, if the SHM segment already exists, the pool we
-  //  be initialized with the data already in it.
-  explicit Pool(int size, bool clear = false);
-  ~Pool();
-
   // Gets a pointer to a block of memory from the pool.
   // Args:
   //  size: The size of the memory block.
@@ -92,10 +84,10 @@ class Pool {
   //  The calculated offset.
   int GetOffset(const void *shared_object) const;
 
-  // Forcefully clears and reinitializes the shared memory block.
+  // Forcefully clears the pool.
   // Returns:
   //  True if it succeeds, false otherwise.
-  bool Clear();
+  void Clear();
 
   // Gets the block size for the pool. This is the minimum amount of data that
   // can be allocated at one time. (Requesting less data will allocate one block
@@ -104,16 +96,47 @@ class Pool {
   //  The block size.
   static constexpr int get_block_size();
 
+  // Either creates a new pool if none exists, or provides a pointer to the
+  // existing pool for this process. This method is thread-safe.
+  // Args:
+  //  size: The size of the pool in bytes. See the constructor for more info.
+  // Returns:
+  //  A pointer to the pool.
+  static Pool *GetPool(int size);
+  // Unlinks the shared memory segment and removes all the data stored in it.
+  // You should be VERY, VERY CAREFUL with this method, because once it is
+  // called, NOTHING ELSE in the entire application can use shared memory. It
+  // should be called only when the application is exiting, and you are
+  // absolutely sure that nothing will use shared memory again.
+  // Returns:
+  //  True if unlinking worked, false if it didn't.
+  static bool Unlink();
+
  private:
+  // Some tests need to create additional pool instances, which is usually shut
+  // down by our singleton paradigm.
+  friend class testing::PoolTest_SharedTest_Test;
+
+  // Creates a new pool, or links to an already existing one.
+  // This should never be called directly by the user, hence its privateness.
+  // Use GetPool() instead.
+  // Args:
+  //  size: The size in bytes of the pool to make. Important: If the pool
+  //  already exists, this MUST BE THE SAME as the size used to create it,
+  //  otherwise Allocate() might not give you blocks that are actually mapped in
+  //  shared memory.
+  explicit Pool(int size);
+  ~Pool();
+
   // An instance of this struct actually lives in SHM and keeps track of
-  // everything the class needs to know.
+  // everything the class needs to know. There should only ever be one of these
+  // for any given application.
   struct PoolHeader {
     // The size of the pool in bytes.
     int size;
     // The number of blocks in the pool.
     int num_blocks;
-    // The size of the block allocation array in bytes.
-    int block_allocation_size;
+
     // Use this lock to protect allocations.
     Mutex allocation_lock;
   };
@@ -129,6 +152,12 @@ class Pool {
 
   // The total size of the memory allocation.
   int total_size_;
+  // The total number of bytes we use for our block allocation array.
+  int block_bytes_;
+
+  // The pool instance that will be used for this process. (We can only mmap
+  // stuff once per process.)
+  static Pool *singleton_pool_;
 
   // Helper function that sets or unsets a segment of the block allocation
   // array.
@@ -176,6 +205,14 @@ class Pool {
   //  uint8_t array containing the raw memory.
   uint8_t *MapShm(int size, int fd, int *data_size, int *num_blocks,
                   int *block_bytes, int *header_overhead);
+
+  // This is so we can create the singleton pool for each process.
+  // Args:
+  //  size: The size of the pool.
+  //  clear: Whether or not to clear the pool.
+  static void CreateSingletonPool(int size);
+  // Deletes the singleton pool when we're done with it.
+  static void DeleteSingletonPool();
 };
 
 }  // namespace internal

@@ -42,27 +42,14 @@ class Queue {
   //  stops it from writing to the corresponding subqueue. This option can also
   //  be used to ensure that enqueue operations don't fail because never-read
   //  subqueues are getting full.
-  Queue(bool consumer=true);
-  // Constructor that makes a new queue but uses a pool that we pass in.
-  // Args:
-  //  pool: The pool to use.
-  //  consumer: See above for explanation.
-  explicit Queue(Pool *pool, bool consumer=true);
+  explicit Queue(bool consumer = true);
   // A similar contructor that fetches a queue stored at a particular location
   // in shared memory. Used internally by FetchQueue.
   // Args:
   //  queue_offset: The byte offset in the shared memory block of the underlying
   //  RawQueue object.
   //  consumer: See above for explanation.
-  explicit Queue(int queue_offset, bool consumer=true);
-  // Yet another constructor that combines the attributes of the two immediately
-  // above it.
-  // Args:
-  //  pool: The pool to use.
-  //  queue_offset: The byte offset in the shared memory block of the underlying
-  //  RawQueue object.
-  //  consumer: See above for explanation.
-  Queue(Pool *pool, int queue_offset, bool consumer=true);
+  Queue(int queue_offset, bool consumer = true);
   ~Queue();
 
   // Adds a new element to the queue, without blocking. It is lock-free, and
@@ -120,8 +107,6 @@ class Queue {
   RawQueue *queue_;
   // This is the shared memory pool that we will use to construct queue objects.
   Pool *pool_;
-  // Whether we own our pool or not.
-  bool own_pool_ = false;
   // The last value of queue_->num_subqueues we saw.
   int32_t last_num_subqueues_ = 0;
 

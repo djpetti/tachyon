@@ -2,16 +2,7 @@
 
 template <class T>
 Queue<T>::Queue(bool consumer /*= true*/)
-    : Queue(nullptr, consumer) {}
-
-template <class T>
-Queue<T>::Queue(Pool *pool, bool consumer /*= true*/)
-    : pool_(pool) {
-  if (!pool_) {
-    // Make our own pool.
-    pool_ = new Pool(kPoolSize);
-    own_pool_ = true;
-  }
+    : pool_(Pool::GetPool(kPoolSize)) {
 
   // Allocate the shared memory we need.
   // TODO (danielp): Add reference counting, so we can free shared memory when
@@ -34,11 +25,7 @@ Queue<T>::Queue(Pool *pool, bool consumer /*= true*/)
 
 template <class T>
 Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
-    : Queue(new Pool(kPoolSize), queue_offset, consumer) {}
-
-template <class T>
-Queue<T>::Queue(Pool *pool, int queue_offset, bool consumer /*= true*/)
-    : pool_(pool) {
+    : pool_(Pool::GetPool(kPoolSize)) {
   // Find the SHM portion of the queue.
   queue_ = pool_->AtOffset<RawQueue>(queue_offset);
 
@@ -55,17 +42,9 @@ Queue<T>::Queue(Pool *pool, int queue_offset, bool consumer /*= true*/)
 template <class T>
 Queue<T>::~Queue() {
   // Get rid of subqueues.
-  const int32_t num_subqueues = queue_->num_subqueues;
+  const int32_t num_subqueues = last_num_subqueues_;
   for (int i = 0; i < num_subqueues; ++i) {
-    // FIXME (danielp): We can't delete stuff here until we implement reference
-    // counting.
-    //delete subqueues_[i];
-  }
-
-  // If someone passed in the pool, they own it, so we probably don't want to
-  // delete it.
-  if (own_pool_) {
-    delete(pool_);
+    delete subqueues_[i];
   }
 }
 
@@ -78,7 +57,7 @@ void Queue<T>::AddSubqueue() {
   ++last_num_subqueues_;
 
   // Create a new queue at that index.
-  MpscQueue<T> *new_queue = new MpscQueue<T>(pool_);
+  MpscQueue<T> *new_queue = new MpscQueue<T>();
   subqueues_[queue_index] = new_queue;
   my_subqueue_ = new_queue;
 
@@ -100,7 +79,7 @@ void Queue<T>::IncorporateNewSubqueues() {
     for (int i = last_num_subqueues_; i < num_subqueues; ++i) {
       if (queue_->queue_offsets[i].valid) {
         const int32_t offset = queue_->queue_offsets[i].offset;
-        subqueues_[last_num_subqueues_++] = new MpscQueue<T>(pool_, offset);
+        subqueues_[last_num_subqueues_++] = new MpscQueue<T>(offset);
       }
     }
   }

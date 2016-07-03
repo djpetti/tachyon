@@ -31,24 +31,12 @@ template <class T>
 class MpscQueue {
  public:
   MpscQueue();
-  // Constructor that makes a new queue but uses a pool that we pass in.
-  // Args:
-  //  pool: The pool to use.
-  explicit MpscQueue(Pool *pool);
   // A similar contructor that fetches a queue stored at a particular location
   // in shared memory. Used internally by FetchQueue.
   // Args:
   //  queue_offset: The byte offset in the shared memory block of the underlying
   //  RawQueue object.
   explicit MpscQueue(int queue_offset);
-  // Yet another constructor that combines the attributes of the two immediately
-  // above it.
-  // Args:
-  //  pool: The pool to use.
-  //  queue_offset: The byte offset in the shared memory block of the underlying
-  //  RawQueue object.
-  MpscQueue(Pool *pool, int queue_offset);
-  ~MpscQueue();
 
   // Allows a user to "reserve" a place in the queue. Using this method will
   // save a space in the queue that nobody can write over, but which also can't
@@ -116,9 +104,6 @@ class MpscQueue {
     // Current index of the head.
     volatile int32_t head_index;
   };
-
-  // Whether we own our pool or not.
-  bool own_pool_ = false;
 
   // For consumers, we can get away with storing the tail index locally since we
   // only have one.

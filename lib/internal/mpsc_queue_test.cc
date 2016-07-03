@@ -44,15 +44,20 @@ int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
 
 // Tests for the queue.
 class MpscQueueTest : public ::testing::Test {
- public:
-  MpscQueueTest() : pool_(kPoolSize, true), queue_(&pool_) {}
-
  protected:
-  // Size of the pool to use for testing.
-  static constexpr int kPoolSize = sizeof(int) * 50;
+  MpscQueueTest() = default;
 
-  // The pool to use for testing.
-  Pool pool_;
+  virtual void SetUp() {
+    // Clear the pool for this process. This is where the queues store their
+    // state, so clearing this ensures that tests don't affect each-other.
+    Pool::GetPool(kPoolSize)->Clear();
+  }
+
+  static void TearDownTestCase() {
+    // Unlink SHM.
+    ASSERT_TRUE(Pool::Unlink());
+  }
+
   // The queue we are testing with.
   MpscQueue<int> queue_;
 };
