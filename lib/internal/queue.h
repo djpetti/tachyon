@@ -37,11 +37,12 @@ class Queue {
   // Args:
   //  consumer: By default, items can be read from the queue using this
   //  instance. If, however, consumer is false, any dequeue operations will
-  //  automatically return false. It is recommended that if this functionality
-  //  is not needed, consumer be set to false, for efficiency's sake, since it
-  //  stops it from writing to the corresponding subqueue. This option can also
-  //  be used to ensure that enqueue operations don't fail because never-read
-  //  subqueues are getting full.
+  //  automatically segfault, or throw an assertion failure in debug mode.
+  //  It is recommended that if this functionality is not needed, consumer
+  //  be set to false, for efficiency's sake, since it stops it from writing
+  //  to the corresponding subqueue. This option can also be used to ensure
+  //  that enqueue operations don't fail because never-read subqueues
+  //  are getting full.
   explicit Queue(bool consumer = true);
   // A similar contructor that fetches a queue stored at a particular location
   // in shared memory. Used internally by FetchQueue.
@@ -114,7 +115,7 @@ class Queue {
   // MPMC queue.
   MpscQueue<T> *subqueues_[kMaxConsumers];
   // The particular subqueue that we read off of.
-  MpscQueue<T> *my_subqueue_;
+  MpscQueue<T> *my_subqueue_ = nullptr;
 };
 
 #include "queue_impl.h"
