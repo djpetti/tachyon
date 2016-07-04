@@ -122,6 +122,7 @@ bool Queue<T>::Enqueue(const T &item) {
 template <class T>
 bool Queue<T>::DequeueNext(T *item) {
   // Now, read from our designated subqueue.
+  assert(my_subqueue_ && "This queue is not configured as a consumer!");
   return my_subqueue_->DequeueNext(item);
 }
 
