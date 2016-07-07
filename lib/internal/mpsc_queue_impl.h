@@ -107,3 +107,8 @@ template <class T>
 int MpscQueue<T>::GetOffset() const {
   return pool_->GetOffset(queue_);
 }
+
+template <class T>
+void MpscQueue<T>::FreeQueue() {
+  pool_->FreeType<RawQueue>(queue_);
+}

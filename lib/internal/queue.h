@@ -31,6 +31,9 @@ namespace internal {
 // memory, and then copied out again at the other end.
 // * This queue is slightly nonstandard in that all consumers will always read
 // every single item on the queue. (I personally find this feature very useful.)
+// * Two different threads should never touch the same queue instance. If you
+// want to give both threads access to the queue, make two different queue
+// instances with the same queue_offset parameter.
 template <class T>
 class Queue {
  public:
@@ -75,6 +78,11 @@ class Queue {
   // Returns:
   //  The offset.
   int GetOffset() const;
+
+  // Frees the underlying shared memory associated with this queue. Use this
+  // method carefully, because once called, any futher operations on this
+  // queue from any thread or process produce undefined results.
+  void FreeQueue();
 
  private:
   // Represents a single item in the queue_offsets list.
