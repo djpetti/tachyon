@@ -42,6 +42,8 @@ Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
 template <class T>
 Queue<T>::~Queue() {
   // Get rid of subqueues.
+  // NOTE: This only deletes the local portion of the queue state. To delete the
+  // shared portion, you must call FreeQueue().
   const int32_t num_subqueues = last_num_subqueues_;
   for (int i = 0; i < num_subqueues; ++i) {
     delete subqueues_[i];
@@ -129,4 +131,19 @@ bool Queue<T>::DequeueNext(T *item) {
 template <class T>
 int Queue<T>::GetOffset() const {
   return pool_->GetOffset(queue_);
+}
+
+template <class T>
+void Queue<T>::FreeQueue() {
+  // We want to make sure we free everything, so we need all the subqueues
+  // locally.
+  IncorporateNewSubqueues();
+
+  // Free shared memory for the underlying subqueues.
+  for (int i = 0; i < last_num_subqueues_; ++i) {
+    subqueues_[i]->FreeQueue();
+  }
+
+  // Now free our underlying shared memory.
+  pool_->FreeType<RawQueue>(queue_);
 }

@@ -83,6 +83,12 @@ class MpscQueue {
   //  The offset.
   int GetOffset() const;
 
+  // Frees the underlying shared memory that the queue uses. This is definitely
+  // an "expert mode" method, because using it improperly can result in the
+  // corruption of data that other processes are using. Only call it when you're
+  // sure that this queue will no longer be used.
+  void FreeQueue();
+
  private:
   // Represents an item in the queue.
   struct Node {

@@ -53,6 +53,11 @@ class QueueTest : public ::testing::Test {
  protected:
   QueueTest() = default;
 
+  virtual void TearDown() {
+    // Free queue SHM.
+    queue_.FreeQueue();
+  }
+
   static void TearDownTestCase() {
     // Unlink SHM.
     ASSERT_TRUE(Pool::Unlink());
@@ -130,6 +135,9 @@ TEST_F(QueueTest, SpscTest) {
   // Wait for them both to finish.
   EXPECT_EQ(0, consumer_ret.get());
   producer.join();
+
+  // Delete the new queue that we created.
+  queue.FreeQueue();
 }
 
 // Test that we can use the queue normally with lots of threads.
@@ -153,6 +161,9 @@ TEST_F(QueueTest, MpmcTest) {
   for (int i = 0; i < 50; ++i) {
     producers[i].join();
   }
+
+  // Delete the new queue that we created.
+  queue.FreeQueue();
 }
 
 }  // namespace testing
