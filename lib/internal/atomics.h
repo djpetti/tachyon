@@ -25,30 +25,35 @@ bool CompareExchange(volatile uint32_t *value, uint32_t old_val,
 //  source: The source value.
 // Returns:
 //  The original value of dest before anything was added to it.
-int32_t ExchangeAdd(volatile int32_t *dest, int32_t source);
+uint32_t ExchangeAdd(volatile uint32_t *dest, volatile int32_t source);
+
+// Same thing as the function above, but it operates on a word instead of a
+// long.
+uint16_t ExchangeAddWord(volatile uint16_t *dest, volatile int16_t source);
 
 // Exchanges the two arguments without doing any comparison.
 // Args:
 //  dest: The destination value.
 //  source: The value to change it to.
-void Exchange(volatile uint32_t *dest, uint32_t source);
+// Returns: The old value of the destination.
+uint32_t Exchange(volatile uint32_t *dest, volatile uint32_t source);
 
 // Performs an atomic bitwise AND operation on two 32-bit integers.
 // Args:
 //  dest: The first value to AND. This will be overwritten with the result of
 //  the operation.
 //  mask: The second value to AND.
-void BitwiseAnd(volatile int32_t *dest, uint32_t mask);
+void BitwiseAnd(volatile uint32_t *dest, uint32_t mask);
 
-// Perform an atomic increment operation.
+// Perform an atomic decrement operation.
 // Args:
-//  value: The number to increment.
-void Decrement(volatile int32_t *value);
+//  value: The number to decrement.
+void Decrement(volatile uint32_t *value);
 
 // Forces all loads/stores that are before this call to complete before the
 // call, and all the ones that are after the call to complete after the call.
 // Used to stop the CPU from spontaneouly reordering memory operations in a way
-// that breaks code.
+// that breaks lock-free code.
 void Fence();
 
 }  // namespace internal

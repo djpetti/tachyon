@@ -26,6 +26,21 @@ int FutexCall(Futex *futex, int futex_op, int val) {
 
 }  // namespace
 
+bool FutexWait(Futex *futex, int expected) {
+  const int futex_ret = FutexCall(futex, FUTEX_WAIT, expected);
+  assert((!futex_ret || errno == EAGAIN) &&
+         "futex(FUTEX_WAIT) failed unexpectedly.");
+  _UNUSED(futex_ret);
+
+  return !futex_ret;
+}
+
+int FutexWake(Futex *futex, int num_waiters) {
+  const int futex_ret = FutexCall(futex, FUTEX_WAKE, num_waiters);
+  assert(futex_ret >= 0 && "futex(FUTEX_WAKE) failed unexpectedly.");
+  return futex_ret;
+}
+
 void MutexInit(Mutex *mutex) {
   mutex->state = 0;
 }
@@ -41,10 +56,7 @@ void MutexGrab(Mutex *mutex) {
       // futex to 2 to indicate contention.
       if (*state == 2 || CompareExchange(state, 1, 2)) {
         // There's still contention. Wait in the kernel.
-        const int futex_ret = FutexCall(state, FUTEX_WAIT, 2);
-        assert((!futex_ret || errno == EAGAIN) &&
-               "futex(FUTEX_WAIT) failed unexpectedly.");
-        _UNUSED(futex_ret);
+        FutexWait(state, 2);
       }
     } while (!CompareExchange(state, 0, 2));
     // Someone unlocking it sets it to zero, so we should only get here if we
@@ -66,9 +78,7 @@ void MutexRelease(Mutex *mutex) {
     _UNUSED(cas_ret);
 
     // Wake someone up.
-    const int futex_ret = FutexCall(state, FUTEX_WAKE, 1);
-    assert(futex_ret >= 0 && "futex(FUTEX_WAKE) failed unexpectedly.");
-    _UNUSED(futex_ret);
+    FutexWake(state, 1);
   }
 }
 

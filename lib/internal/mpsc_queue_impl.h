@@ -12,6 +12,7 @@ MpscQueue<T>::MpscQueue()
 
   for (int i = 0; i < kQueueCapacity; ++i) {
     queue_->array[i].valid = 0;
+    queue_->array[i].write_waiters = 0;
   }
 }
 
@@ -38,7 +39,7 @@ bool MpscQueue<T>::Reserve() {
 }
 
 template <class T>
-void MpscQueue<T>::EnqueueAt(const T &item) {
+void MpscQueue<T>::EnqueueAt(const T &item, bool will_block) {
   // Increment the write head to keep other writers from writing over this
   // space.
   int32_t old_head = ExchangeAdd(&(queue_->head_index), 1);
@@ -54,11 +55,51 @@ void MpscQueue<T>::EnqueueAt(const T &item) {
   old_head &= mask;
 
   volatile Node *write_at = queue_->array + old_head;
+
+  // Implement blocking if we need to.
+  if (will_block) {
+    // First, some convenience pointers to access the two counters.
+    volatile uint16_t *write_counter_ptr =
+        reinterpret_cast<volatile uint16_t *>(&(write_at->write_waiters));
+
+    // Increment the number of people waiting. (This operates on only the first
+    // 2 bytes.)
+    uint16_t my_wait_number = ExchangeAddWord(write_counter_ptr, 1) + 1;
+    // Ignore the MSB.
+    my_wait_number &= 0x7F;
+
+    // We're sort of implementing the deli algorithm here. We wait for
+    // the wait counter to be equal to the woken counter.
+
+    uint32_t write_waiters = write_at->write_waiters;
+    uint16_t woken_counter = *(write_counter_ptr + 1) & 0x7F;
+    // If the MSBs of the two counters are the same, then we know that they have
+    // both wrapped the same number of times, and we can use the standard logic
+    // below. If, however, they are different, then one has wrapped once more
+    // than the other, so we need to use the inverted logic instead.
+    bool inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
+    while ((!inverted && woken_counter < my_wait_number) ||
+           (inverted && woken_counter > my_wait_number)) {
+      FutexWait(&(write_at->write_waiters), write_waiters);
+
+      write_waiters = write_at->write_waiters;
+      woken_counter = *(write_counter_ptr + 1) & 0x7F;
+      inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
+    }
+  }
+
   write_at->value = item;
 
   // Only now is it safe to alert readers that we have a new element.
   Fence();
-  Exchange(&(write_at->valid), 1);
+  const uint32_t old_valid = Exchange(&(write_at->valid), 1);
+  if (old_valid == 2) {
+    // If there was someone waiting for this to be valid, we need to wake them
+    // up.
+    const int woke_up = FutexWake(&(write_at->valid), 1);
+    assert(woke_up <= 1 && "Woke up the wrong number of waiters?");
+    _UNUSED(woke_up);
+  }
 }
 
 template <class T>
@@ -72,7 +113,7 @@ bool MpscQueue<T>::Enqueue(const T &item) {
   if (!Reserve()) {
     return false;
   }
-  EnqueueAt(item);
+  EnqueueAt(item, false);
 
   return true;
 }
@@ -98,9 +139,68 @@ bool MpscQueue<T>::DequeueNext(T *item) {
 
   // Only now is it safe to alert writers that we have one fewer element.
   Fence();
-  ExchangeAdd(&(queue_->write_length), -1);
+  Decrement(&(queue_->write_length));
 
   return true;
+}
+
+template <class T>
+void MpscQueue<T>::EnqueueBlocking(const T &item) {
+  // Increment the write length now, to keep other writers from writing off the
+  // end.
+  int32_t length = ExchangeAdd(&(queue_->write_length), 1) + 1;
+  Fence();
+
+  // Now that we have a spot, we can just be lazy and let EnqueueAt() do the
+  // work for us. If the queue is already full, we'll have it block for us too.
+  EnqueueAt(item, length > kQueueCapacity);
+}
+
+template <class T>
+void MpscQueue<T>::DequeueNextBlocking(T *item) {
+  // Check that the space we want to read is actually valid.
+  volatile Node *read_at = queue_->array + tail_index_;
+  if (!CompareExchange(&(read_at->valid), 1, 0)) {
+    // This means the space was not valid to begin with, and we have nothing
+    // left to read. We indicate that we are waiting for something in this spot
+    // by setting it's value to 2.
+    if (CompareExchange(&(read_at->valid), 0, 2)) {
+      while (read_at->valid == 2) {
+        // Wait for it to become valid.
+        FutexWait(&(read_at->valid), 2);
+      }
+    }
+    // Since we only have one consumer, if we get here, we can be confident
+    // that it's now valid. We now have to mark it as invalid before continuing,
+    // though.
+    Exchange(&(read_at->valid), 0);
+  }
+  assert(read_at->valid == 0 && "Reading from node not marked as invalid.");
+
+  *item = read_at->value;
+
+  ++tail_index_;
+  // The ANDing is so we can easily make our indices wrap when they reach the
+  // end of the physical array.
+  constexpr uint32_t mask =
+      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
+  tail_index_ &= mask;
+
+  // Only now is it safe to alert writers that we have one fewer element.
+  Fence();
+  const int32_t old_length = ExchangeAdd(&(queue_->write_length), -1);
+  if (old_length > kQueueCapacity) {
+    // There are writers waiting for a space. Since the queue is full at this
+    // point, we know that there will always be someone trying to write to the
+    // space that is at the tail of the queue, e.g. this one.
+    // Increment the woken counter.
+    volatile uint16_t *woken_counter =
+        reinterpret_cast<volatile uint16_t *>(&(read_at->write_waiters)) + 1;
+    ExchangeAddWord(woken_counter, 1);
+    // Wake all of them up. (One of them will actually continue.)
+    Fence();
+    FutexWake(&(read_at->write_waiters), ::std::numeric_limits<uint32_t>::max());
+  }
 }
 
 template <class T>

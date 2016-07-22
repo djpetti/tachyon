@@ -24,6 +24,15 @@ void ProducerThread(MpscQueue<int> *queue) {
   }
 }
 
+// Does the exact same thing as the function above, but uses blocking.
+// Args:
+//  queue: The queue to use.
+void BlockingProducerThread(MpscQueue<int> *queue) {
+  for (int i = -3000; i <= 3000; ++i) {
+    queue->EnqueueBlocking(i);
+  }
+}
+
 // A queue consumer thread. It just runs in a loop and reads a sequence off the
 // queue. The sequence is verified by checking that it sums to zero.
 // Args:
@@ -34,6 +43,21 @@ int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
   for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
     while (!queue->DequeueNext(&compare));
+    total += compare;
+  }
+
+  return total;
+}
+
+// Does the exact same thing as the function above, but uses blocking.
+// Args:
+//  queue: The queue to use.
+//  num_producers: The number of producers we have.
+int BlockingConsumerThread(MpscQueue<int> *queue, int num_producers) {
+  int total = 0;
+  for (int i = 0; i < 6001 * num_producers; ++i) {
+    int compare;
+    queue->DequeueNextBlocking(&compare);
     total += compare;
   }
 
@@ -144,6 +168,44 @@ TEST_F(MpscQueueTest, MpscTest) {
     producers[i].join();
   }
 }
+
+// Tests that we can use the queue normally in a single-threaded case with
+// blocking.
+TEST_F(MpscQueueTest, SingleThreadBlockingTest) {
+  int dequeue_counter = 0;
+  int on_queue;
+  for (int i = 0; i < 20; i += 2) {
+    // Here, we'll enqueue two items and deque one.
+    queue_.EnqueueBlocking(i);
+    queue_.EnqueueBlocking(i + 1);
+
+    queue_.DequeueNextBlocking(&on_queue);
+    EXPECT_EQ(dequeue_counter, on_queue);
+    ++dequeue_counter;
+  }
+
+  // Now dequeue everything remaining.
+  for (int i = 0; i < 10; ++i) {
+    queue_.DequeueNextBlocking(&on_queue);
+    EXPECT_EQ(dequeue_counter, on_queue);
+    ++dequeue_counter;
+  }
+
+  // There should be nothing left.
+  EXPECT_FALSE(queue_.DequeueNext(&on_queue));
+}
+
+// Test that we can use the queue normally with two threads and blocking.
+TEST_F(MpscQueueTest, SpscBlockingTest) {
+  ::std::thread producer(BlockingProducerThread, &queue_);
+  ::std::future<int> consumer_ret =
+      ::std::async(&BlockingConsumerThread, &queue_, 1);
+
+  // Wait for them both to finish.
+  EXPECT_EQ(0, consumer_ret.get());
+  producer.join();
+}
+
 
 }  // namespace testing
 }  // namespace internal

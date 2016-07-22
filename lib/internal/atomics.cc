@@ -16,27 +16,37 @@ bool CompareExchange(volatile uint32_t *value, uint32_t old_val,
   return ret;
 }
 
-int32_t ExchangeAdd(volatile int32_t *dest, int32_t source) {
-  volatile int32_t original;
+uint32_t ExchangeAdd(volatile uint32_t *dest, volatile int32_t source) {
   __asm__ __volatile__(
       "lock\n"
-      "xaddl %1, %2\n"
-      : "=r"(original)
+      "xaddl %2, %3\n"
+      : "=r"(source), "=m"(*dest)
       : "r"(source), "m"(*dest)
       : "memory");
-  return original;
+  return source;
 }
 
-void Exchange(volatile uint32_t *dest, uint32_t source) {
+uint16_t ExchangeAddWord(volatile uint16_t *dest, volatile int16_t source) {
   __asm__ __volatile__(
       "lock\n"
-      "xchgl %2, %1\n"
-      : "=m"(*dest)
+      "xaddw %2, %3\n"
+      : "=r"(source), "=m"(*dest)
       : "r"(source), "m"(*dest)
       : "memory");
+  return source;
 }
 
-void BitwiseAnd(volatile int32_t *dest, uint32_t mask) {
+uint32_t Exchange(volatile uint32_t *dest, volatile uint32_t source) {
+  __asm__ __volatile__(
+      "lock\n"
+      "xchgl %1, %0\n"
+      : "=r"(source), "=m"(*dest)
+      : "r"(source), "m"(*dest)
+      : "memory");
+  return source;
+}
+
+void BitwiseAnd(volatile uint32_t *dest, uint32_t mask) {
   __asm__ __volatile__(
       "lock\n"
       "andl %1, %2\n"
@@ -45,7 +55,7 @@ void BitwiseAnd(volatile int32_t *dest, uint32_t mask) {
       : "memory");
 }
 
-void Decrement(volatile int32_t *value) {
+void Decrement(volatile uint32_t *value) {
   __asm__ __volatile__(
       "lock\n"
       "decl %1\n"

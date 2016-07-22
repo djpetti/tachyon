@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_INTERNAL_FUTEX_H_
-#define GAIA_LIB_INTERNAL_FUTEX_H_
+#ifndef GAIA_LIB_INTERNAL_MUTEX_H_
+#define GAIA_LIB_INTERNAL_MUTEX_H_
 
 #include <stdint.h>
 
@@ -9,7 +9,7 @@ namespace internal {
 // TODO (danielp): Priority-inversion futex calls.
 
 // Futex documentation requires four-byte alignment, even on 64-bit systems.
-typedef uint32_t Futex __attribute__((aligned(4)));
+typedef volatile uint32_t Futex __attribute__((aligned(4)));
 
 // A low-level mutex implementation. Must be placed in shared memory by whatever
 // uses it.
@@ -20,6 +20,21 @@ struct Mutex {
   // for it.
   Futex state;
 };
+
+// A wrapper for FUTEX_WAIT calls.
+// Args:
+//  futex: The futex to wait on.
+//  expected: The expected value of the futex.
+// Returns: True if the futex call succeeded normally, false if it exited
+// immediately with EAGAIN. (Meaning the condition was not true.)
+bool FutexWait(Futex *futex, int expected);
+// A wrapper for FUTEX_WAKE calls.
+// Args:
+//  futex: The futex to wake waiters on.
+//  num_waiters: How many waiters to wake.
+// Returns:
+//  The number of waiters it woke up.
+int FutexWake(Futex *futex, int num_waiters);
 
 // Initializes a new futex.
 // Args:
@@ -39,4 +54,4 @@ void MutexRelease(Mutex *mutex);
 }  // namespace internal
 }  // namespace gaia
 
-#endif // GAIA_LIB_INTERNAL_FUTEX_H_
+#endif // GAIA_LIB_INTERNAL_MUTEX_H_

@@ -8,6 +8,8 @@
 
 #include "atomics.h"
 #include "constants.h"
+#include "macros.h"
+#include "mutex.h"
 #include "pool.h"
 
 namespace gaia {
@@ -54,7 +56,7 @@ class MpscQueue {
   // otherwise the behavior of this method is undefined.
   // Args:
   //  item: The item to add to the queue.
-  void EnqueueAt(const T &item);
+  void EnqueueAt(const T &item, bool will_block = false);
   // Allows a user to cancel a reservation previously made with Reserve().
   // IMPORTANT: The user MUST have successfully reserved a spot with Reserve(),
   // otherwise the behavior of this method will drop legitimate elements from
@@ -78,6 +80,17 @@ class MpscQueue {
   //  already.
   bool DequeueNext(T *item);
 
+  // Adds a new element to the queue, and blocks if the queue is full.
+  // With no contention, this method is lock-free.
+  // Args:
+  //  item: The item to add to the queue.
+  void EnqueueBlocking(const T &item);
+  // Removes an element from the queue, and blocks if the queue is empty.
+  // With no contention, this method is lock-free.
+  // Args:
+  //  item: A place to copy the item.
+  void DequeueNextBlocking(T *item);
+
   // Gets the offset of the shared part of the queue in the shared memory pool.
   // Returns:
   //  The offset.
@@ -94,8 +107,34 @@ class MpscQueue {
   struct Node {
     // The actual item we want to store.
     volatile T value;
-    // A flag denoting whether this node contains valid data.
-    volatile uint32_t valid;
+    // A flag denoting whether this node contains valid data. It is aligned
+    // specially so that we can basically use it as a futex to implement
+    // blocking reads.
+    volatile uint32_t valid __attribute__((aligned(4)));
+    // This is used to implement blocking writes. Bits 0 through 14 are a
+    // counter of the number of people waiting for this location to become
+    // writeable. Bits 16 through 30 are a counter of the number of people that
+    // have been woken up. Both counters are only incremented and eventually
+    // wrap. Normally, for any given waiter, if the latter counter is >= to the
+    // value that the former counter was when we first incremented it, we know
+    // that we are done waiting and can proceed. Because the counters wrap,
+    // however, this metric is not always reliable. Bits 15 and 31 are compared,
+    // therefore, and used to determine when to invert this logic. (The counters
+    // are incremented like they are 16 bits, but only the first 15 bits are
+    // read normally.)
+    //
+    // As long as you don't have more than 2^15 people waiting on the same
+    // location at once, this system should work reliably. Also note that
+    // because we have to wake everyone waiting on a particular space up every
+    // time, having a massive number of writers blocked at once significantly
+    // decreases the overall efficiency of the queue.
+    //
+    // TODO (danielp): Use the bitmask futex operations to increase the
+    // efficiency with a large number of writers.
+    // TODO (danielp): Use a 64-bit type here instead, which I think could make
+    // some of our futex operations more efficient, since we can wait only on
+    // the half that we care about.
+    volatile uint32_t write_waiters __attribute__((aligned(4)));
   };
 
   // This is the underlying structure that will be located in shared memory, and
@@ -105,10 +144,11 @@ class MpscQueue {
   struct RawQueue {
     // The underlying array.
     volatile Node array[kQueueCapacity];
-    // Total length of the queue visible to writers.
-    volatile int32_t write_length;
+    // Total length of the queue visible to writers. It is aligned specially
+    // because we basically use it as a futex in order to implement blocking.
+    volatile uint32_t write_length __attribute__((aligned(4)));
     // Current index of the head.
-    volatile int32_t head_index;
+    volatile uint32_t head_index;
   };
 
   // For consumers, we can get away with storing the tail index locally since we
