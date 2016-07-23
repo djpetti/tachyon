@@ -25,11 +25,21 @@ void ProducerThread(MpscQueue<int> *queue) {
 }
 
 // Does the exact same thing as the function above, but uses blocking.
-// Args:
-//  queue: The queue to use.
 void BlockingProducerThread(MpscQueue<int> *queue) {
   for (int i = -6000; i <= 6000; ++i) {
     queue->EnqueueBlocking(i);
+  }
+}
+
+// Does the same thing as the functions above, but alternates between blocking
+// and non-blocking writes.
+void AlternatingProducerThread(MpscQueue<int> *queue) {
+  for (int i = -6000; i <= 6000; ++i) {
+    if (i % 2) {
+      queue->EnqueueBlocking(i);
+    } else {
+      while (!queue->Enqueue(i));
+    }
   }
 }
 
@@ -38,6 +48,8 @@ void BlockingProducerThread(MpscQueue<int> *queue) {
 // Args:
 //  queue: The queue to use.
 //  num_producers: The number of producers we have.
+// Returns:
+//  The sum of everything it read off the queues.
 int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
   for (int i = 0; i < 6001 * num_producers; ++i) {
@@ -50,14 +62,28 @@ int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
 }
 
 // Does the exact same thing as the function above, but uses blocking.
-// Args:
-//  queue: The queue to use.
-//  num_producers: The number of producers we have.
 int BlockingConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
   for (int i = 0; i < 12001 * num_producers; ++i) {
     int compare;
     queue->DequeueNextBlocking(&compare);
+    total += compare;
+  }
+
+  return total;
+}
+
+// Does the same thing as the functions above, but alternates between blocking
+// and non-blocking reads.
+int AlternatingConsumerThread(MpscQueue<int> *queue, int num_producers) {
+  int total = 0;
+  for (int i = 0; i < 12001 * num_producers; ++i) {
+    int compare;
+    if (i % 2) {
+      queue->DequeueNextBlocking(&compare);
+    } else {
+      while (!queue->DequeueNext(&compare));
+    }
     total += compare;
   }
 
@@ -224,6 +250,18 @@ TEST_F(MpscQueueTest, MpscBlockingTest) {
   for (int i = 0; i < 60; ++i) {
     producers[i].join();
   }
+}
+
+// Test that we can use the queue normally with a combination of blocking and
+// non-blocking operations in the same thread.
+TEST_F(MpscQueueTest, BlockingAndNonBlockingTest) {
+  ::std::thread producer(AlternatingProducerThread, &queue_);
+  ::std::future<int> consumer_ret =
+      ::std::async(&AlternatingConsumerThread, &queue_, 1);
+
+  // Wait for them both to finish.
+  EXPECT_EQ(0, consumer_ret.get());
+  producer.join();
 }
 
 }  // namespace testing
