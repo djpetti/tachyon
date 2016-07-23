@@ -39,7 +39,12 @@ bool MpscQueue<T>::Reserve() {
 }
 
 template <class T>
-void MpscQueue<T>::EnqueueAt(const T &item, bool will_block) {
+void MpscQueue<T>::EnqueueAt(const T &item) {
+  DoEnqueue(item, false);
+}
+
+template <class T>
+void MpscQueue<T>::DoEnqueue(const T &item, bool will_block) {
   // Increment the write head to keep other writers from writing over this
   // space.
   int32_t old_head = ExchangeAdd(&(queue_->head_index), 1);
@@ -60,31 +65,11 @@ void MpscQueue<T>::EnqueueAt(const T &item, bool will_block) {
   // 2 bytes.) We need to do this even if we're not blocking.
   volatile uint16_t *write_counter_ptr =
       reinterpret_cast<volatile uint16_t *>(&(write_at->write_waiters));
-  uint16_t my_wait_number = ExchangeAddWord(write_counter_ptr, 1);
+  const uint16_t my_wait_number = ExchangeAddWord(write_counter_ptr, 1);
 
   // Implement blocking if we need to.
   if (will_block) {
-    // Ignore the MSB.
-    my_wait_number &= 0x7FFF;
-
-    // We're sort of implementing the deli algorithm here. We wait for
-    // the wait counter to be equal to the woken counter.
-
-    uint32_t write_waiters = write_at->write_waiters;
-    uint16_t woken_counter = (write_waiters >> 16) & 0x7FFF;
-    // If the MSBs of the two counters are the same, then we know that they have
-    // both wrapped the same number of times, and we can use the standard logic
-    // below. If, however, they are different, then one has wrapped once more
-    // than the other, so we need to use the inverted logic instead.
-    bool inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
-    while ((!inverted && woken_counter < my_wait_number) ||
-           (inverted && woken_counter > my_wait_number)) {
-      FutexWait(&(write_at->write_waiters), write_waiters);
-
-      write_waiters = write_at->write_waiters;
-      woken_counter = (write_waiters >> 16) & 0x7FFF;
-      inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
-    }
+    DoWriteBlocking(write_at, my_wait_number);
   }
 
   write_at->value = item;
@@ -102,6 +87,32 @@ void MpscQueue<T>::EnqueueAt(const T &item, bool will_block) {
 }
 
 template <class T>
+void MpscQueue<T>::DoWriteBlocking(volatile Node *write_at,
+                                   uint16_t my_wait_number) {
+  // Ignore the MSB.
+  my_wait_number &= 0x7FFF;
+
+  // We're sort of implementing the deli algorithm here. We wait for
+  // the wait counter to be equal to the woken counter.
+
+  uint32_t write_waiters = write_at->write_waiters;
+  uint16_t woken_counter = (write_waiters >> 16) & 0x7FFF;
+  // If the MSBs of the two counters are the same, then we know that they have
+  // both wrapped the same number of times, and we can use the standard logic
+  // below. If, however, they are different, then one has wrapped once more
+  // than the other, so we need to use the inverted logic instead.
+  bool inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
+  while ((!inverted && woken_counter < my_wait_number) ||
+          (inverted && woken_counter > my_wait_number)) {
+    FutexWait(&(write_at->write_waiters), write_waiters);
+
+    write_waiters = write_at->write_waiters;
+    woken_counter = (write_waiters >> 16) & 0x7FFF;
+    inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
+  }
+}
+
+template <class T>
 void MpscQueue<T>::CancelReservation() {
   // Decrementing write_length lets other people write over this space again.
   Decrement(&(queue_->write_length));
@@ -112,7 +123,7 @@ bool MpscQueue<T>::Enqueue(const T &item) {
   if (!Reserve()) {
     return false;
   }
-  EnqueueAt(item, false);
+  EnqueueAt(item);
 
   return true;
 }
@@ -127,14 +138,7 @@ bool MpscQueue<T>::DequeueNext(T *item) {
     return false;
   }
 
-  *item = read_at->value;
-
-  ++tail_index_;
-  // The ANDing is so we can easily make our indices wrap when they reach the
-  // end of the physical array.
-  constexpr uint32_t mask =
-      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
-  tail_index_ &= mask;
+  DoDequeue(item, read_at);
 
   // Only now is it safe to alert writers that we have one fewer element.
   Fence();
@@ -144,15 +148,32 @@ bool MpscQueue<T>::DequeueNext(T *item) {
 }
 
 template <class T>
+void MpscQueue<T>::DoDequeue(T *item, volatile Node *read_at) {
+  *item = read_at->value;
+
+  ++tail_index_;
+  // The ANDing is so we can easily make our indices wrap when they reach the
+  // end of the physical array.
+  constexpr uint32_t mask =
+      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
+  tail_index_ &= mask;
+
+  // Increment the woken counter.
+  volatile uint16_t *woken_counter =
+      reinterpret_cast<volatile uint16_t *>(&(read_at->write_waiters)) + 1;
+  IncrementWord(woken_counter);
+}
+
+template <class T>
 void MpscQueue<T>::EnqueueBlocking(const T &item) {
   // Increment the write length now, to keep other writers from writing off the
   // end.
   int32_t length = ExchangeAdd(&(queue_->write_length), 1) + 1;
   Fence();
 
-  // Now that we have a spot, we can just be lazy and let EnqueueAt() do the
+  // Now that we have a spot, we can just be lazy and let DoEnqueue() do the
   // work for us. If the queue is already full, we'll have it block for us too.
-  EnqueueAt(item, length > kQueueCapacity);
+  DoEnqueue(item, length > kQueueCapacity);
 }
 
 template <class T>
@@ -176,19 +197,7 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
   }
   assert(read_at->valid == 0 && "Reading from node not marked as invalid.");
 
-  *item = read_at->value;
-
-  ++tail_index_;
-  // The ANDing is so we can easily make our indices wrap when they reach the
-  // end of the physical array.
-  constexpr uint32_t mask =
-      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
-  tail_index_ &= mask;
-
-  // Increment the woken counter.
-  volatile uint16_t *woken_counter =
-      reinterpret_cast<volatile uint16_t *>(&(read_at->write_waiters)) + 1;
-  ExchangeAddWord(woken_counter, 1);
+  DoDequeue(item, read_at);
 
   // Only now is it safe to alert writers that we have one fewer element.
   Fence();

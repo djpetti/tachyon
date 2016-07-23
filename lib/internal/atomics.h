@@ -50,6 +50,15 @@ void BitwiseAnd(volatile uint32_t *dest, uint32_t mask);
 //  value: The number to decrement.
 void Decrement(volatile uint32_t *value);
 
+// Perform an atomic increment operation.
+// Args:
+//  value: The value to increment.
+void Increment(volatile uint32_t *value);
+
+// Same thing as the function above, but it operates on a word instead of a
+// long.
+void IncrementWord(volatile uint16_t *value);
+
 // Forces all loads/stores that are before this call to complete before the
 // call, and all the ones that are after the call to complete after the call.
 // Used to stop the CPU from spontaneouly reordering memory operations in a way
