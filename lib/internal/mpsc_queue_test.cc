@@ -28,7 +28,7 @@ void ProducerThread(MpscQueue<int> *queue) {
 // Args:
 //  queue: The queue to use.
 void BlockingProducerThread(MpscQueue<int> *queue) {
-  for (int i = -3000; i <= 3000; ++i) {
+  for (int i = -6000; i <= 6000; ++i) {
     queue->EnqueueBlocking(i);
   }
 }
@@ -55,7 +55,7 @@ int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
 //  num_producers: The number of producers we have.
 int BlockingConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
-  for (int i = 0; i < 6001 * num_producers; ++i) {
+  for (int i = 0; i < 12001 * num_producers; ++i) {
     int compare;
     queue->DequeueNextBlocking(&compare);
     total += compare;
@@ -206,6 +206,25 @@ TEST_F(MpscQueueTest, SpscBlockingTest) {
   producer.join();
 }
 
+// Test that we can use the queue normally with lots of threads and blocking.
+TEST_F(MpscQueueTest, MpscBlockingTest) {
+  ::std::thread producers[60];
+  ::std::future<int> consumer =
+      ::std::async(&BlockingConsumerThread, &queue_, 60);
+
+  // Make 50 producers, all using the same queue.
+  for (int i = 0; i < 60; ++i) {
+    producers[i] = ::std::thread(BlockingProducerThread, &queue_);
+  }
+
+  // Everything should sum to zero.
+  EXPECT_EQ(0, consumer.get());
+
+  // Join all the producers.
+  for (int i = 0; i < 60; ++i) {
+    producers[i].join();
+  }
+}
 
 }  // namespace testing
 }  // namespace internal
