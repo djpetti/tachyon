@@ -64,6 +64,24 @@ void Decrement(volatile uint32_t *value) {
       : "memory");
 }
 
+void Increment(volatile uint32_t *value) {
+  __asm__ __volatile__(
+      "lock\n"
+      "incl %1\n"
+      : "=m"(*value)
+      : "m"(*value)
+      : "memory");
+}
+
+void IncrementWord(volatile uint16_t *value) {
+  __asm__ __volatile__(
+      "lock\n"
+      "incw %1\n"
+      : "=m"(*value)
+      : "m"(*value)
+      : "memory");
+}
+
 void Fence() {
   __asm__ __volatile__(
       "mfence\n"

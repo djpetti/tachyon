@@ -56,7 +56,7 @@ class MpscQueue {
   // otherwise the behavior of this method is undefined.
   // Args:
   //  item: The item to add to the queue.
-  void EnqueueAt(const T &item, bool will_block = false);
+  void EnqueueAt(const T &item);
   // Allows a user to cancel a reservation previously made with Reserve().
   // IMPORTANT: The user MUST have successfully reserved a spot with Reserve(),
   // otherwise the behavior of this method will drop legitimate elements from
@@ -150,6 +150,30 @@ class MpscQueue {
     // Current index of the head.
     volatile uint32_t head_index;
   };
+
+  // Handles the implementation of blocking writes. It will block until the
+  // requested node is available.
+  // Args:
+  //  write_at: A pointer to the node that we're trying to write to.
+  //  my_wait_number: The value that we are waiting for the woken counter to
+  //  reach before we continue.
+  void DoWriteBlocking(volatile Node *write_at, uint16_t my_wait_number);
+  // Actually writes an element to the queue. It assumes that a space was
+  // already reserved by incrementing queue_->write_length.
+  // Args:
+  //  item: The item to write to the queue.
+  //  will_block: Whether this write is going to block or not. (It's possible
+  //  that this is set to true, but the call still doesn't actually block
+  //  because it determines that the Node it wants to write to was actually read
+  //  in the meantime.)
+  void DoEnqueue(const T &item, bool will_block);
+  // Actually reads an element from the queue. It assumes that the space has
+  // already been checked for validity. It also does not decrement write_length,
+  // assuming that will be done afterwards.
+  // Args:
+  //  item: Where to write the item that was read from the queue.
+  //  read_at: Node that we are reading from.
+  void DoDequeue(T *item, volatile Node *read_at);
 
   // For consumers, we can get away with storing the tail index locally since we
   // only have one.
