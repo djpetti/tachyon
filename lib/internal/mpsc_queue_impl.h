@@ -56,23 +56,22 @@ void MpscQueue<T>::EnqueueAt(const T &item, bool will_block) {
 
   volatile Node *write_at = queue_->array + old_head;
 
+  // Increment the number of people waiting. (This operates on only the first
+  // 2 bytes.) We need to do this even if we're not blocking.
+  volatile uint16_t *write_counter_ptr =
+      reinterpret_cast<volatile uint16_t *>(&(write_at->write_waiters));
+  uint16_t my_wait_number = ExchangeAddWord(write_counter_ptr, 1);
+
   // Implement blocking if we need to.
   if (will_block) {
-    // First, some convenience pointers to access the two counters.
-    volatile uint16_t *write_counter_ptr =
-        reinterpret_cast<volatile uint16_t *>(&(write_at->write_waiters));
-
-    // Increment the number of people waiting. (This operates on only the first
-    // 2 bytes.)
-    uint16_t my_wait_number = ExchangeAddWord(write_counter_ptr, 1) + 1;
     // Ignore the MSB.
-    my_wait_number &= 0x7F;
+    my_wait_number &= 0x7FFF;
 
     // We're sort of implementing the deli algorithm here. We wait for
     // the wait counter to be equal to the woken counter.
 
     uint32_t write_waiters = write_at->write_waiters;
-    uint16_t woken_counter = *(write_counter_ptr + 1) & 0x7F;
+    uint16_t woken_counter = (write_waiters >> 16) & 0x7FFF;
     // If the MSBs of the two counters are the same, then we know that they have
     // both wrapped the same number of times, and we can use the standard logic
     // below. If, however, they are different, then one has wrapped once more
@@ -83,7 +82,7 @@ void MpscQueue<T>::EnqueueAt(const T &item, bool will_block) {
       FutexWait(&(write_at->write_waiters), write_waiters);
 
       write_waiters = write_at->write_waiters;
-      woken_counter = *(write_counter_ptr + 1) & 0x7F;
+      woken_counter = (write_waiters >> 16) & 0x7FFF;
       inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
     }
   }
@@ -186,17 +185,16 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
       ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
   tail_index_ &= mask;
 
+  // Increment the woken counter.
+  volatile uint16_t *woken_counter =
+      reinterpret_cast<volatile uint16_t *>(&(read_at->write_waiters)) + 1;
+  ExchangeAddWord(woken_counter, 1);
+
   // Only now is it safe to alert writers that we have one fewer element.
   Fence();
   const int32_t old_length = ExchangeAdd(&(queue_->write_length), -1);
   if (old_length > kQueueCapacity) {
-    // There are writers waiting for a space. Since the queue is full at this
-    // point, we know that there will always be someone trying to write to the
-    // space that is at the tail of the queue, e.g. this one.
-    // Increment the woken counter.
-    volatile uint16_t *woken_counter =
-        reinterpret_cast<volatile uint16_t *>(&(read_at->write_waiters)) + 1;
-    ExchangeAddWord(woken_counter, 1);
+    // There are people waiting that we need to wake up.
     // Wake all of them up. (One of them will actually continue.)
     Fence();
     FutexWake(&(read_at->write_waiters), ::std::numeric_limits<uint32_t>::max());
