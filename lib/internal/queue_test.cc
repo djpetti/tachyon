@@ -28,6 +28,17 @@ void ProducerThread(int offset) {
   }
 }
 
+// Same thing as the above function, but uses blocking writes.
+void BlockingProducerThread(int offset) {
+  Queue<int> queue(offset, false);
+
+  for (int i = -3000; i <= 3000; ++i) {
+    // Sometimes, producer threads will get kicked off before consumer threads.
+    // In that case, if it returns false, we just want to spin until it works.
+    while (!queue.EnqueueBlocking(i));
+  }
+}
+
 // A queue consumer thread. It just runs in a loop and reads a sequence off the
 // queue. The sequence is verified by checking that it sums to zero.
 // Args:
@@ -40,6 +51,20 @@ int ConsumerThread(int offset, int num_producers) {
   for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
     while (!queue.DequeueNext(&compare));
+    total += compare;
+  }
+
+  return total;
+}
+
+// Same thing as the above function, but uses blocking reads.
+int BlockingConsumerThread(int offset, int num_producers) {
+  Queue<int> queue(offset);
+
+  int total = 0;
+  for (int i = 0; i < 6001 * num_producers; ++i) {
+    int compare;
+    queue.DequeueNextBlocking(&compare);
     total += compare;
   }
 
@@ -152,6 +177,77 @@ TEST_F(QueueTest, MpmcTest) {
   // Make 50 producers, all using the same queue.
   for (int i = 0; i < 50; ++i) {
     producers[i] = ::std::thread(ProducerThread, queue_offset);
+  }
+
+  // Everything should sum to zero.
+  EXPECT_EQ(0, consumer.get());
+
+  // Join all the producers.
+  for (int i = 0; i < 50; ++i) {
+    producers[i].join();
+  }
+
+  // Delete the new queue that we created.
+  queue.FreeQueue();
+}
+
+// Test that we can use the queue normally in a single-threaded case with
+// blocking.
+TEST_F(QueueTest, SingleThreadBlockingTest) {
+  int dequeue_counter = 0;
+  int on_queue;
+  for (int i = 0; i < 20; i += 2) {
+    // Here, we'll enqueue two items and deque one.
+    EXPECT_TRUE(queue_.EnqueueBlocking(i));
+    EXPECT_TRUE(queue_.EnqueueBlocking(i + 1));
+
+    queue_.DequeueNextBlocking(&on_queue);
+    EXPECT_EQ(dequeue_counter, on_queue);
+    ++dequeue_counter;
+  }
+
+  // Now dequeue everything remaining.
+  for (int i = 0; i < 10; ++i) {
+    queue_.DequeueNextBlocking(&on_queue);
+    EXPECT_EQ(dequeue_counter, on_queue);
+    ++dequeue_counter;
+  }
+
+  // There should be nothing left.
+  EXPECT_FALSE(queue_.DequeueNext(&on_queue));
+}
+
+// Test that we can use the queue normally with two threads and blocking.
+TEST_F(QueueTest, SpscBlockingTest) {
+  // Since Queue classes have some local state involved on both the producer and
+  // consumer sides, we need to use separate queue instances.
+  Queue<int> queue(false);
+  const int queue_offset = queue.GetOffset();
+
+  ::std::thread producer(BlockingProducerThread, queue_offset);
+  ::std::future<int> consumer_ret =
+      ::std::async(&BlockingConsumerThread, queue_offset, 1);
+
+  // Wait for them both to finish.
+  EXPECT_EQ(0, consumer_ret.get());
+  producer.join();
+
+  // Delete the new queue that we created.
+  queue.FreeQueue();
+}
+
+// Test that we can use the queue normally with lots of threads and blocking.
+TEST_F(QueueTest, MpmcBlockingTest) {
+  Queue<int> queue(false);
+  const int queue_offset = queue.GetOffset();
+
+  ::std::thread producers[50];
+  ::std::future<int> consumer =
+      ::std::async(&BlockingConsumerThread, queue_offset, 50);
+
+  // Make 50 producers, all using the same queue.
+  for (int i = 0; i < 50; ++i) {
+    producers[i] = ::std::thread(BlockingProducerThread, queue_offset);
   }
 
   // Everything should sum to zero.
