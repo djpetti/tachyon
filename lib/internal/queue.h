@@ -64,6 +64,13 @@ class Queue {
   //  True if it succeeded in adding the item, false if the queue was
   //  full already.
   bool Enqueue(const T &item);
+  // Adds a new element to the queue, and blocks if there isn't space.
+  // Args:
+  //  item: The item to add to the queue.
+  // Returns:
+  //  True if writing the message succeeded, false if there were no consumers to
+  //  write it to.
+  bool EnqueueBlocking(const T &item);
 
   // Removes an element from the queue, without blocking. It is lock-free, and
   // stays in userspace.
@@ -73,6 +80,10 @@ class Queue {
   //  True if it succeeded in getting an item, false if the queue was empty
   //  already.
   bool DequeueNext(T *item);
+  // Removes an element from the queue, and blocks if the queue is empty.
+  // Args:
+  //  item: A place to copy the item.
+  void DequeueNextBlocking(T *item);
 
   // Gets the offset in the pool of the shared memory portion of this queue.
   // Returns:
@@ -101,7 +112,7 @@ class Queue {
     // How many subqueues we currently have. (We don't necessarily use the whole
     // array.) The fancy alignment + volatile is because x86 guarantees that
     // accesses to a 4-byte aligned value will happen atomically.
-    volatile int32_t num_subqueues __attribute__((aligned(4)));
+    volatile uint32_t num_subqueues __attribute__((aligned(4)));
     // Offsets of all the subqueues in the pool, so we can easily find them.
     volatile Subqueue queue_offsets[kMaxConsumers];
   };
@@ -117,7 +128,7 @@ class Queue {
   // This is the shared memory pool that we will use to construct queue objects.
   Pool *pool_;
   // The last value of queue_->num_subqueues we saw.
-  int32_t last_num_subqueues_ = 0;
+  uint32_t last_num_subqueues_ = 0;
 
   // This is the underlying array of MPSC queues that we use to implement this
   // MPMC queue.

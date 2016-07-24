@@ -44,8 +44,8 @@ Queue<T>::~Queue() {
   // Get rid of subqueues.
   // NOTE: This only deletes the local portion of the queue state. To delete the
   // shared portion, you must call FreeQueue().
-  const int32_t num_subqueues = last_num_subqueues_;
-  for (int i = 0; i < num_subqueues; ++i) {
+  const uint32_t num_subqueues = last_num_subqueues_;
+  for (uint32_t i = 0; i < num_subqueues; ++i) {
     delete subqueues_[i];
   }
 }
@@ -53,7 +53,7 @@ Queue<T>::~Queue() {
 template <class T>
 void Queue<T>::AddSubqueue() {
   // Increment this at the beginning so nobody can write over this spot.
-  const int32_t queue_index = ExchangeAdd(&(queue_->num_subqueues), 1);
+  const uint32_t queue_index = ExchangeAdd(&(queue_->num_subqueues), 1);
   Fence();
 
   ++last_num_subqueues_;
@@ -75,10 +75,10 @@ template <class T>
 void Queue<T>::IncorporateNewSubqueues() {
   // It's okay to look at num_subqueues because we're guaranteed atomic access.
   // However, we copy it because we don't want it to change during the loop.
-  const int32_t num_subqueues = queue_->num_subqueues;
+  const uint32_t num_subqueues = queue_->num_subqueues;
   if (num_subqueues > last_num_subqueues_) {
     // We have new queues to add.
-    for (int i = last_num_subqueues_; i < num_subqueues; ++i) {
+    for (uint32_t i = last_num_subqueues_; i < num_subqueues; ++i) {
       if (queue_->queue_offsets[i].valid) {
         const int32_t offset = queue_->queue_offsets[i].offset;
         subqueues_[last_num_subqueues_++] = new MpscQueue<T>(offset);
@@ -101,11 +101,11 @@ bool Queue<T>::Enqueue(const T &item) {
 
   // Since the subqueues support multiple producers, we can just write to all of
   // them in a pretty straightforward fashion.
-  for (int i = 0; i < last_num_subqueues_; ++i) {
+  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
     if (!subqueues_[i]->Reserve()) {
       // If they're not all going to work, we're going to cancel all our
       // reservations, not enqueue anything, and return false.
-      for (int j = 0; j < i; ++j) {
+      for (uint32_t j = 0; j < i; ++j) {
         subqueues_[j]->CancelReservation();
       }
       return false;
@@ -114,8 +114,29 @@ bool Queue<T>::Enqueue(const T &item) {
 
   // If we get to here, we managed to reserve everything, so we're clear to
   // actually enqueue stuff.
-  for (int i = 0; i < last_num_subqueues_; ++i) {
+  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
     subqueues_[i]->EnqueueAt(item);
+  }
+
+  return true;
+}
+
+template <class T>
+bool Queue<T>::EnqueueBlocking(const T &item) {
+  // First, add any new subqueues that might have been created since we last ran
+  // this.
+  IncorporateNewSubqueues();
+
+  // If we have no consumers, we'd basically just be sending this message out
+  // into the void.
+  if (!last_num_subqueues_) {
+    return false;
+  }
+
+  // Since the subqueues support multiple producers, we can just write to all of
+  // them in a pretty straightforward fashion.
+  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
+    subqueues_[i]->EnqueueBlocking(item);
   }
 
   return true;
@@ -126,6 +147,13 @@ bool Queue<T>::DequeueNext(T *item) {
   // Now, read from our designated subqueue.
   assert(my_subqueue_ && "This queue is not configured as a consumer!");
   return my_subqueue_->DequeueNext(item);
+}
+
+template <class T>
+void Queue<T>::DequeueNextBlocking(T *item) {
+  // Now, read from our designated subqueue.
+  assert(my_subqueue_ && "This queue is not configured as a consumer!");
+  my_subqueue_->DequeueNextBlocking(item);
 }
 
 template <class T>
@@ -140,10 +168,11 @@ void Queue<T>::FreeQueue() {
   IncorporateNewSubqueues();
 
   // Free shared memory for the underlying subqueues.
-  for (int i = 0; i < last_num_subqueues_; ++i) {
+  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
     subqueues_[i]->FreeQueue();
   }
 
   // Now free our underlying shared memory.
   pool_->FreeType<RawQueue>(queue_);
 }
+
