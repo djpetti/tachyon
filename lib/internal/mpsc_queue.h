@@ -162,11 +162,10 @@ class MpscQueue {
   // already reserved by incrementing queue_->write_length.
   // Args:
   //  item: The item to write to the queue.
-  //  will_block: Whether this write is going to block or not. (It's possible
-  //  that this is set to true, but the call still doesn't actually block
-  //  because it determines that the Node it wants to write to was actually read
-  //  in the meantime.)
-  void DoEnqueue(const T &item, bool will_block);
+  //  can_block: Whether this write could block. This is mainly used as an
+  //  optimization flag so we can forgo unnecessary computations for
+  //  non-blocking writes.
+  void DoEnqueue(const T &item, bool can_block);
   // Actually reads an element from the queue. It assumes that the space has
   // already been checked for validity. It also does not decrement write_length,
   // assuming that will be done afterwards.
