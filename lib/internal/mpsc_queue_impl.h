@@ -44,7 +44,7 @@ void MpscQueue<T>::EnqueueAt(const T &item) {
 }
 
 template <class T>
-void MpscQueue<T>::DoEnqueue(const T &item, bool will_block) {
+void MpscQueue<T>::DoEnqueue(const T &item, bool can_block) {
   // Increment the write head to keep other writers from writing over this
   // space.
   int32_t old_head = ExchangeAdd(&(queue_->head_index), 1);
@@ -68,7 +68,7 @@ void MpscQueue<T>::DoEnqueue(const T &item, bool will_block) {
   const uint16_t my_wait_number = ExchangeAddWord(write_counter_ptr, 1);
 
   // Implement blocking if we need to.
-  if (will_block) {
+  if (can_block) {
     DoWriteBlocking(write_at, my_wait_number);
   }
 
@@ -77,6 +77,7 @@ void MpscQueue<T>::DoEnqueue(const T &item, bool will_block) {
   // Only now is it safe to alert readers that we have a new element.
   Fence();
   const uint32_t old_valid = Exchange(&(write_at->valid), 1);
+  assert(old_valid != 1 && "Attempt to overwrite existing space!");
   if (old_valid == 2) {
     // If there was someone waiting for this to be valid, we need to wake them
     // up.
@@ -168,12 +169,12 @@ template <class T>
 void MpscQueue<T>::EnqueueBlocking(const T &item) {
   // Increment the write length now, to keep other writers from writing off the
   // end.
-  int32_t length = ExchangeAdd(&(queue_->write_length), 1) + 1;
+  Increment(&(queue_->write_length));
   Fence();
 
   // Now that we have a spot, we can just be lazy and let DoEnqueue() do the
   // work for us. If the queue is already full, we'll have it block for us too.
-  DoEnqueue(item, length > kQueueCapacity);
+  DoEnqueue(item, true);
 }
 
 template <class T>
@@ -183,7 +184,7 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
   if (!CompareExchange(&(read_at->valid), 1, 0)) {
     // This means the space was not valid to begin with, and we have nothing
     // left to read. We indicate that we are waiting for something in this spot
-    // by setting it's value to 2.
+    // by setting its value to 2.
     if (CompareExchange(&(read_at->valid), 0, 2)) {
       while (read_at->valid == 2) {
         // Wait for it to become valid.
@@ -205,7 +206,6 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
   if (old_length > kQueueCapacity) {
     // There are people waiting that we need to wake up.
     // Wake all of them up. (One of them will actually continue.)
-    Fence();
     FutexWake(&(read_at->write_waiters), ::std::numeric_limits<uint32_t>::max());
   }
 }
