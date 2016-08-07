@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "mutex.h"
+#include "constants.h"
 
 namespace gaia {
 namespace internal {
@@ -23,6 +24,16 @@ class Pool {
   //  A pointer to the start of the allocated block, or nullptr if there is no
   //  more memory left.
   uint8_t *Allocate(int size);
+  // Reserves a block of memory in the pool at a particular offset. Success is
+  // only guaranteed if all calls to this method come before any calls to
+  // Allocate(), no requests overlap, and size is smaller than the pool size.
+  // Args:
+  //  start_byte: The byte offset in the pool where we want to allocate.
+  //  size: The size of the memory block.
+  // Returns:
+  //  A pointer to the allocated block, or nullptr if the memory requested was
+  //  not available.
+  uint8_t *AllocateAt(int start_byte, int size);
   // A helper function to allocate enough space to hold a specific type.
   // Returns:
   //  A pointer to the memory that will house that type.
@@ -94,15 +105,19 @@ class Pool {
   // regardless.)
   // Returns:
   //  The block size.
-  static constexpr int get_block_size();
+  static constexpr int get_block_size() {
+    return kBlockSize;
+  }
+  // Gets the total size of the size of the pool. This is the size of the shared
+  // memory allocation with the size of the pool header subtracted.
+  int get_size() const;
 
   // Either creates a new pool if none exists, or provides a pointer to the
-  // existing pool for this process. This method is thread-safe.
-  // Args:
-  //  size: The size of the pool in bytes. See the constructor for more info.
+  // existing pool for this process. This method is thread-safe. It uses the
+  // pool size defined in constants.h.
   // Returns:
   //  A pointer to the pool.
-  static Pool *GetPool(int size);
+  static Pool *GetPool();
   // Unlinks the shared memory segment and removes all the data stored in it.
   // You should be VERY, VERY CAREFUL with this method, because once it is
   // called, NOTHING ELSE in the entire application can use shared memory. It
@@ -113,10 +128,6 @@ class Pool {
   static bool Unlink();
 
  private:
-  // Some tests need to create additional pool instances, which is usually shut
-  // down by our singleton paradigm.
-  friend class testing::PoolTest_SharedTest_Test;
-
   // Creates a new pool, or links to an already existing one.
   // This should never be called directly by the user, hence its privateness.
   // Use GetPool() instead.

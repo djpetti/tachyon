@@ -17,13 +17,6 @@ namespace gaia {
 namespace internal {
 namespace {
 
-// Name of the shared memory block.
-const char *kShmName = "/gaia_core";
-// We allocate portions of SHM in blocks. This block size should be chosen to
-// balance overhead with wasted space, and ideally the page size should be
-// an integer multiple of this number.
-constexpr int kBlockSize = 128;
-
 // Once flag to use for calling CreateSingletonPool.
 ::std::once_flag singleton_pool_once_flag;
 
@@ -135,6 +128,8 @@ uint8_t *Pool::Allocate(int size) {
   Segment segment = {0, 0, -1, -1, -1};
   Segment smallest_segment = segment;
 
+  int saw_blocks = 0;
+
   for (int i = 0; i < block_bytes_; ++i) {
     uint8_t mask_shifts = 0;
     for (uint8_t mask = 1; mask != 0; mask <<= 1) {
@@ -171,6 +166,14 @@ uint8_t *Pool::Allocate(int size) {
       }
 
       ++mask_shifts;
+      ++saw_blocks;
+
+      if (saw_blocks >= header_->num_blocks) {
+        // We've seen all the blocks there are. We could get here because we have
+        // to have complete bytes even if the number of blocks is not a multiple
+        // of 8.
+        break;
+      }
     }
   }
   if (set_segment) {
@@ -196,29 +199,87 @@ uint8_t *Pool::Allocate(int size) {
   return nullptr;
 }
 
+uint8_t *Pool::AllocateAt(int start_byte, int size) {
+  // Check to make sure that this fits in the pool.
+  assert(start_byte + size <= header_->size &&
+         "Cannot allocate a segment this big.");
+
+  // Grab the lock while we're doing stuff.
+  MutexGrab(&(header_->allocation_lock));
+
+  // Set all the entries in the block allocation array for this segment to zero.
+  const int start_block = start_byte / kBlockSize;
+  const uint8_t start_mask = 1 << (start_byte % kBlockSize);
+  const int end_block = (start_byte + size - 1) / kBlockSize;
+  const uint8_t end_mask = 1 << ((start_byte + size - 1) % kBlockSize);
+
+  // First, make sure that the requested blocks are free.
+  // Start with the beginning and end bytes, creating masks to we can check the
+  // appropriate bits.
+  const uint8_t start_free_mask = ~(start_mask - 1);
+  const uint8_t end_free_mask = (end_mask << 1) - 1;
+  if (block_allocation_[start_block] & start_free_mask) {
+    MutexRelease(&(header_->allocation_lock));
+    return nullptr;
+  }
+  if (block_allocation_[end_block] & end_free_mask) {
+    MutexRelease(&(header_->allocation_lock));
+    return nullptr;
+  }
+
+  // In the middle, we can check 64 bits at a time.
+  int checking_index = start_block + 1;
+  const int end_bound = end_block - (end_block % 8);
+  while (checking_index < end_bound) {
+    const uint64_t *checking_section = reinterpret_cast<uint64_t *>(
+        block_allocation_ + start_block + checking_index);
+    if (*checking_section) {
+      MutexRelease(&(header_->allocation_lock));
+      return nullptr;
+    }
+
+    checking_index += 8;
+  }
+  // Check the rest one byte at a time.
+  while (checking_index < end_block) {
+    if (block_allocation_[checking_index]) {
+      MutexRelease(&(header_->allocation_lock));
+      return nullptr;
+    }
+
+    ++checking_index;
+  }
+
+  // Set the memory as occupied.
+  SetSegment(start_block, start_mask, end_block, end_mask, 1);
+
+  MutexRelease(&(header_->allocation_lock));
+  return data_ + start_byte;
+}
+
 void Pool::Free(uint8_t *block, int size) {
   // Grab the lock while we're doing stuff.
   MutexGrab(&(header_->allocation_lock));
 
   // Set all the entries in the block allocation array for this segment to zero.
   const int start_byte = block - data_;
-  const int start_index = start_byte / kBlockSize;
+  const int start_block = start_byte / kBlockSize;
   const uint8_t start_mask = 1 << (start_byte % kBlockSize);
-  const int end_index = (start_byte + size - 1) / kBlockSize;
+  const int end_block = (start_byte + size - 1) / kBlockSize;
   const uint8_t end_mask = 1 << ((start_byte + size - 1) % kBlockSize);
 
-  SetSegment(start_index, start_mask, end_index, end_mask, 0);
+  SetSegment(start_block, start_mask, end_block, end_mask, 0);
 
   MutexRelease(&(header_->allocation_lock));
 }
 
-static constexpr int get_block_size() {
-  return kBlockSize;
+int Pool::get_size() const {
+  return header_->size;
 }
 
-Pool *Pool::GetPool(int size) {
+Pool *Pool::GetPool() {
   // Create the singleton pool.
-  ::std::call_once(singleton_pool_once_flag, CreateSingletonPool, size);
+  ::std::call_once(singleton_pool_once_flag, CreateSingletonPool, kPoolSize);
 
   return singleton_pool_;
 }
@@ -232,7 +293,8 @@ void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
   // We need to adapt our masks first so that we can actually use them to set
   // the first and last bytes.
   start_mask = ~(start_mask - 1);
-  end_mask += end_mask - 1;
+  end_mask <<= 1;
+  end_mask -= 1;
   if (start_index == end_index) {
     // An important edge case is if we're operating within the same byte, in
     // which case we don't want to set the whole byte.
@@ -254,9 +316,7 @@ void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
   } else {
     fill = 0;
   }
-  for (int i = start_index + 1; i < end_index; ++i) {
-    block_allocation_[i] = fill;
-  }
+  memset(block_allocation_ + start_index + 1, fill, end_index - start_index);
 }
 
 void Pool::CalculateHeaderOverhead(int data_size, int num_blocks,
