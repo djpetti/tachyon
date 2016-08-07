@@ -7,6 +7,13 @@
 namespace gaia {
 namespace internal {
 
+// Name of the shared memory block.
+const char *kShmName = "/gaia_core";
+// We allocate portions of SHM in blocks. This block size should be chosen to
+// balance overhead with wasted space, and ideally the page size should be
+// an integer multiple of this number.
+constexpr int kBlockSize = 128;
+
 // How many items we want our queues to be able to hold. This constant
 // designates how many times to << 1 in order to get that number.
 static constexpr int kQueueCapacityShifts = 6; // 64
