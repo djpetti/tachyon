@@ -2,7 +2,7 @@
 
 template <class T>
 MpscQueue<T>::MpscQueue()
-    : pool_(Pool::GetPool(kPoolSize)) {
+    : pool_(Pool::GetPool()) {
   // Allocate the shared memory we need.
   queue_ = pool_->AllocateForType<RawQueue>();
   assert(queue_ != nullptr && "Out of shared memory?");
@@ -18,7 +18,7 @@ MpscQueue<T>::MpscQueue()
 
 template <class T>
 MpscQueue<T>::MpscQueue(int queue_offset)
-    : pool_(Pool::GetPool(kPoolSize)) {
+    : pool_(Pool::GetPool()) {
   // Find the actual queue.
   queue_ = pool_->AtOffset<RawQueue>(queue_offset);
 }

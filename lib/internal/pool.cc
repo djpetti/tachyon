@@ -17,6 +17,26 @@ namespace gaia {
 namespace internal {
 namespace {
 
+// Given a start offset and a size, it figures out the start and end indices and
+// masks in the block allocation array of the specified memory region.
+// Args:
+//  offset: The offset of the region in bytes.
+//  size: The size of the region in bytes.
+//  start_index: The start index in block_allocation_.
+//  start_mask: The start mask in block_allocation_.
+//  end_index: The end index in block_allocation_.
+//  end_mask: The end mask in block_allocation_.
+void DefineSegment(int offset, int size, int *start_index, uint8_t *start_mask,
+                   int *end_index, uint8_t *end_mask) {
+  const int start_block = offset / kBlockSize;
+  const int end_block = (offset + size - 1) / kBlockSize;
+
+  *start_index = start_block >> 3;
+  *start_mask = 1 << (start_block % 8);
+  *end_index = end_block >> 3;
+  *end_mask = 1 << (end_block % 8);
+}
+
 // Once flag to use for calling CreateSingletonPool.
 ::std::once_flag singleton_pool_once_flag;
 
@@ -178,8 +198,10 @@ uint8_t *Pool::Allocate(int size) {
   }
   if (set_segment) {
     // We reached the end while still in a free segment.
-    smallest_segment = segment;
-    smallest_size = segment_size;
+    if (segment_size < smallest_size) {
+      smallest_segment = segment;
+      smallest_size = segment_size;
+    }
   }
 
   if (smallest_size != INT_MAX) {
@@ -207,32 +229,32 @@ uint8_t *Pool::AllocateAt(int start_byte, int size) {
   // Grab the lock while we're doing stuff.
   MutexGrab(&(header_->allocation_lock));
 
-  // Set all the entries in the block allocation array for this segment to zero.
-  const int start_block = start_byte / kBlockSize;
-  const uint8_t start_mask = 1 << (start_byte % kBlockSize);
-  const int end_block = (start_byte + size - 1) / kBlockSize;
-  const uint8_t end_mask = 1 << ((start_byte + size - 1) % kBlockSize);
+  // Figure out the bits that we have to flip in block_allocation_.
+  int start_index, end_index;
+  uint8_t start_mask, end_mask;
+  DefineSegment(start_byte, size, &start_index, &start_mask, &end_index,
+                &end_mask);
 
   // First, make sure that the requested blocks are free.
   // Start with the beginning and end bytes, creating masks to we can check the
   // appropriate bits.
   const uint8_t start_free_mask = ~(start_mask - 1);
   const uint8_t end_free_mask = (end_mask << 1) - 1;
-  if (block_allocation_[start_block] & start_free_mask) {
+  if (block_allocation_[start_index] & start_free_mask) {
     MutexRelease(&(header_->allocation_lock));
     return nullptr;
   }
-  if (block_allocation_[end_block] & end_free_mask) {
+  if (block_allocation_[end_index] & end_free_mask) {
     MutexRelease(&(header_->allocation_lock));
     return nullptr;
   }
 
   // In the middle, we can check 64 bits at a time.
-  int checking_index = start_block + 1;
-  const int end_bound = end_block - (end_block % 8);
+  int checking_index = start_index + 1;
+  const int end_bound = end_index - (end_index % 8);
   while (checking_index < end_bound) {
     const uint64_t *checking_section = reinterpret_cast<uint64_t *>(
-        block_allocation_ + start_block + checking_index);
+        block_allocation_ + start_index + checking_index);
     if (*checking_section) {
       MutexRelease(&(header_->allocation_lock));
       return nullptr;
@@ -241,7 +263,7 @@ uint8_t *Pool::AllocateAt(int start_byte, int size) {
     checking_index += 8;
   }
   // Check the rest one byte at a time.
-  while (checking_index < end_block) {
+  while (checking_index < end_index) {
     if (block_allocation_[checking_index]) {
       MutexRelease(&(header_->allocation_lock));
       return nullptr;
@@ -251,7 +273,7 @@ uint8_t *Pool::AllocateAt(int start_byte, int size) {
   }
 
   // Set the memory as occupied.
-  SetSegment(start_block, start_mask, end_block, end_mask, 1);
+  SetSegment(start_index, start_mask, end_index, end_mask, 1);
 
   MutexRelease(&(header_->allocation_lock));
   return data_ + start_byte;
@@ -261,14 +283,15 @@ void Pool::Free(uint8_t *block, int size) {
   // Grab the lock while we're doing stuff.
   MutexGrab(&(header_->allocation_lock));
 
-  // Set all the entries in the block allocation array for this segment to zero.
-  const int start_byte = block - data_;
-  const int start_block = start_byte / kBlockSize;
-  const uint8_t start_mask = 1 << (start_byte % kBlockSize);
-  const int end_block = (start_byte + size - 1) / kBlockSize;
-  const uint8_t end_mask = 1 << ((start_byte + size - 1) % kBlockSize);
+  // Figure out the bits that we have to flip in block_allocation_.
+  int start_index, end_index;
+  uint8_t start_mask, end_mask;
+  const int offset = GetOffset(block);
+  DefineSegment(offset, size, &start_index, &start_mask, &end_index,
+                &end_mask);
 
-  SetSegment(start_block, start_mask, end_block, end_mask, 0);
+  // Set all the entries in the block allocation array for this segment to zero.
+  SetSegment(start_index, start_mask, end_index, end_mask, 0);
 
   MutexRelease(&(header_->allocation_lock));
 }
@@ -307,6 +330,11 @@ void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
   } else {
     block_allocation_[start_index] &= ~start_mask;
     block_allocation_[end_index] &= ~end_mask;
+  }
+
+  // If there are no complete bytes in between, we're done.
+  if (end_index - start_index < 2) {
+    return;
   }
 
   // Fill in the middle.
