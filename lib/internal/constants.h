@@ -25,6 +25,12 @@ static constexpr int kPoolSize = 64000;
 // The maximum number of consumers a queue can have.
 static constexpr int kMaxConsumers = 64;
 
+// Number of buckets in the hashmap that stores queue names.
+static constexpr int kNameMapSize = 128;
+// Byte offset in shared memory where the hashmap that stores queue names is
+// located.
+static constexpr int kNameMapOffset = 0;
+
 }
 }
 

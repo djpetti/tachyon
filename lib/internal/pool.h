@@ -34,12 +34,24 @@ class Pool {
   //  A pointer to the allocated block, or nullptr if the memory requested was
   //  not available.
   uint8_t *AllocateAt(int start_byte, int size);
+
   // A helper function to allocate enough space to hold a specific type.
   // Returns:
-  //  A pointer to the memory that will house that type.
+  //  A pointer to the memory that will store that type.
   template <class T>
   T *AllocateForType() {
     uint8_t *raw = Allocate(sizeof(T));
+    return reinterpret_cast<T *>(raw);
+  }
+  // Same as the above, but uses AllocateAt() as the underlying allocator
+  // instead of Allocate().
+  // Args:
+  //  start_byte: The byte offset in the pool where we want to allocate.
+  // Returns:
+  //  A pointer to the memory that will store that type.
+  template <class T>
+  T *AllocateForTypeAt(int start_byte) {
+    uint8_t *raw = AllocateAt(start_byte, sizeof(T));
     return reinterpret_cast<T *>(raw);
   }
   // A helper function to allocate enough space to hold an array of a specific
@@ -47,12 +59,23 @@ class Pool {
   // Args:
   //  length: The length of the array.
   // Returns:
-  //  A pointer to the memory that will house the array.
+  //  A pointer to the memory that will store the array.
   template <class T>
   T *AllocateForArray(int length) {
     uint8_t *raw = Allocate(sizeof(T) * length);
     return reinterpret_cast<T *>(raw);
   }
+  // Also the same as the above, but uses AllocateAt() as the underlying
+  // allocator instead of Allocate().
+  // Args:
+  //  start_byte: The byte offset in the pool where we want to allocate.
+  //  size: length: The length of the array.
+  template <class T>
+  T *AllocateForArrayAt(int start_byte, int length) {
+    uint8_t *raw = AllocateAt(start_byte, sizeof(T) * length);
+    return reinterpret_cast<T *>(raw);
+  }
+
   // Frees a block of allocated memory.
   // Args:
   //  block: A pointer to the start of the block.
