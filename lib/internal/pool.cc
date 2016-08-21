@@ -344,7 +344,7 @@ void Pool::SetSegment(int start_index, uint8_t start_mask, int end_index,
   } else {
     fill = 0;
   }
-  memset(block_allocation_ + start_index + 1, fill, end_index - start_index);
+  memset(block_allocation_ + start_index + 1, fill, end_index - start_index - 1);
 }
 
 void Pool::CalculateHeaderOverhead(int data_size, int num_blocks,

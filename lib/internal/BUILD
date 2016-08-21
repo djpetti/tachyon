@@ -47,3 +47,10 @@ cc_test(
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_internal"],
 )
+
+cc_test(
+  name = "shared_hashmap_test",
+  srcs = ["shared_hashmap_test.cc"],
+  copts = ["-Iexternal/gtest/include"],
+  deps = ["@gtest//:main", ":libgaia_internal"],
+)
