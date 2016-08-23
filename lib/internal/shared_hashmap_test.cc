@@ -41,28 +41,26 @@ TEST_F(SharedHashmapTest, BasicTest) {
   map_->AddOrSet("horse", 1);
 
   // Make sure we can get them back.
-  int *result = map_->Fetch("correct");
-  ASSERT_NE(result, nullptr);
-  EXPECT_EQ(0, *result);
-  result = map_->Fetch("horse");
-  ASSERT_NE(result, nullptr);
-  EXPECT_EQ(1, *result);
+  int result;
+  ASSERT_TRUE(map_->Fetch("correct", &result));
+  EXPECT_EQ(0, result);
+  ASSERT_TRUE(map_->Fetch("horse", &result));
+  EXPECT_EQ(1, result);
 
   // Try changing their value.
   map_->AddOrSet("correct", 2);
   map_->AddOrSet("horse", 3);
 
-  result = map_->Fetch("correct");
-  ASSERT_NE(result, nullptr);
-  EXPECT_EQ(2, *result);
-  result = map_->Fetch("horse");
-  ASSERT_NE(result, nullptr);
-  EXPECT_EQ(3, *result);
+  ASSERT_TRUE(map_->Fetch("correct", &result));
+  EXPECT_EQ(2, result);
+  ASSERT_TRUE(map_->Fetch("horse", &result));
+  EXPECT_EQ(3, result);
 }
 
 // Make sure it handles things not being in the map.
 TEST_F(SharedHashmapTest, NonexistentTest) {
-  EXPECT_EQ(nullptr, map_->Fetch("battery"));
+  int result;
+  EXPECT_FALSE(map_->Fetch("battery", &result));
 }
 
 // Strings as keys are handled separately, so it's worth making sure that we can
@@ -72,16 +70,15 @@ TEST_F(SharedHashmapTest, NonStringKeyTest) {
 
   map.AddOrSet(5, 6);
 
-  int *result = map.Fetch(5);
-  ASSERT_NE(result, nullptr);
-  EXPECT_EQ(6, *result);
+  int result;
+  ASSERT_TRUE(map.Fetch(5, &result));
+  EXPECT_EQ(6, result);
 
   // Change the value.
   map.AddOrSet(5, 7);
 
-  result = map.Fetch(5);
-  ASSERT_NE(result, nullptr);
-  EXPECT_EQ(7, *result);
+  ASSERT_TRUE(map.Fetch(5, &result));
+  EXPECT_EQ(7, result);
 }
 
 // Make sure it handles buckets with multiple items.
@@ -97,9 +94,9 @@ TEST_F(SharedHashmapTest, OveruseTest) {
   // Now make sure we can read every item back.
   for (int i = 0; i < kSize; ++i) {
     const ::std::string key = base_key + ::std::to_string(i);
-    int *result = map_->Fetch(key.c_str());
-    ASSERT_NE(nullptr, result);
-    EXPECT_EQ(i, *result);
+    int result;
+    ASSERT_TRUE(map_->Fetch(key.c_str(), &result));
+    EXPECT_EQ(i, result);
   }
 }
 

@@ -181,7 +181,8 @@ void SharedHashmap<KeyType, ValueType>::AddOrSet(const KeyType &key,
 }
 
 template <class KeyType, class ValueType>
-ValueType *SharedHashmap<KeyType, ValueType>::Fetch(const KeyType &key) {
+bool SharedHashmap<KeyType, ValueType>::Fetch(const KeyType &key,
+                                              ValueType *value) {
   MutexGrab(lock_);
 
   Bucket *bucket = FindBucket(key);
@@ -189,9 +190,11 @@ ValueType *SharedHashmap<KeyType, ValueType>::Fetch(const KeyType &key) {
   if (!internal::StringSpecific<KeyType>::CompareKeys(key, bucket->key)) {
     // It's not there.
     MutexRelease(lock_);
-    return nullptr;
+    return false;
   }
 
   MutexRelease(lock_);
-  return &(bucket->value);
+  *value = bucket->value;
+
+  return true;
 }

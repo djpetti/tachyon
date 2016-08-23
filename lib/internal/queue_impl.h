@@ -2,7 +2,7 @@
 
 template <class T>
 Queue<T>::Queue(bool consumer /*= true*/)
-    : pool_(Pool::GetPool()), queue_names_(QueueNamesAllocatorType()) {
+    : pool_(Pool::GetPool()) {
   // Allocate the shared memory we need.
   // TODO (danielp): Add reference counting, so we can free shared memory when
   // we don't need it.
@@ -24,7 +24,7 @@ Queue<T>::Queue(bool consumer /*= true*/)
 
 template <class T>
 Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
-    : pool_(Pool::GetPool()), queue_names_(QueueNamesAllocatorType()) {
+    : pool_(Pool::GetPool()) {
   // Find the SHM portion of the queue.
   queue_ = pool_->AtOffset<RawQueue>(queue_offset);
 
@@ -176,14 +176,12 @@ void Queue<T>::FreeQueue() {
 }
 
 template <class T>
-::std::unique_ptr<Queue<T>> Queue<T>::DoFetchQueue(const ::std::string &name,
+::std::unique_ptr<Queue<T>> Queue<T>::DoFetchQueue(const char *name,
                                                    bool consumer) {
   // First, see if a queue exists.
-  const auto &queue_iter = queue_names_.find(name);
-
-  if (queue_iter != ::std::endl) {
+  int offset;
+  if (queue_names_.Fetch(name, &offset)) {
     // We have a queue, so just make a new handle to it.
-    const int offset = queue_iter->second;
     Queue<T> *queue_handle = new Queue(offset, consumer);
     return ::std::unique_ptr<Queue<T>>(queue_handle);
   }
@@ -191,18 +189,17 @@ template <class T>
   // Create a new queue.
   Queue<T> *queue_handle = new Queue(consumer);
   // Save the offset.
-  queue_names_[name] = queue_handle->GetOffset();
+  queue_names_.AddOrSet(name, queue_handle->GetOffset());
 
   return ::std::unique_ptr<Queue<T>>(queue_handle);
 }
 
 template <class T>
-::std::unique_ptr<Queue<T>> Queue<T>::FetchQueue(const ::std::string &name) {
+::std::unique_ptr<Queue<T>> Queue<T>::FetchQueue(const char *name) {
   return DoFetchQueue(name, true);
 }
 
 template <class T>
-::std::unique_ptr<Queue<T>> Queue<T>::FetchProducerQueue(
-    const ::std::string &name) {
+::std::unique_ptr<Queue<T>> Queue<T>::FetchProducerQueue(const char *name) {
   return DoFetchQueue(name, false);
 }
