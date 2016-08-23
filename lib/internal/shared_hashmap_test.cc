@@ -22,6 +22,7 @@ class SharedHashmapTest : public ::testing::Test {
   }
 
   virtual void TearDown() {
+    map_->Free();
     delete map_;
   }
 

@@ -79,19 +79,32 @@ template <>
 template <class KeyType, class ValueType>
 SharedHashmap<KeyType, ValueType>::SharedHashmap(int offset, int num_buckets)
     : pool_(Pool::GetPool()), num_buckets_(num_buckets) {
-  // Allocate the underlying array in shared memory.
-  data_ = pool_->AllocateForArrayAt<Bucket>(offset, num_buckets_);
-  assert(data_ && "Failed to allocate shared hash table.");
+  // Check to see if the memory we want has already been allocated. If it has,
+  // we assume that someone has already made a hashtable at this offset, and we
+  // can just use it.
+  if (!pool_->IsMemoryUsed(offset)) {
+    // Allocate the underlying array in shared memory.
+    data_ = pool_->AllocateForArrayAt<Bucket>(offset, num_buckets_);
+    assert(data_ && "Failed to allocate shared hash table.");
 
-  // Initialize the buckets.
-  for (int i = 0; i < num_buckets_; ++i) {
-    data_[i].next = nullptr;
-    data_[i].occupied = false;
+    // Initialize the buckets.
+    for (int i = 0; i < num_buckets_; ++i) {
+      data_[i].next = nullptr;
+      data_[i].occupied = false;
+    }
+
+    // Initialize the mutex.
+    lock_ = pool_->AllocateForType<Mutex>();
+    MutexInit(lock_);
+
+  } else {
+    // Just use the existing memory.
+    data_ = pool_->AtOffset<Bucket>(offset);
   }
 }
 
 template <class KeyType, class ValueType>
-SharedHashmap<KeyType, ValueType>::~SharedHashmap() {
+void SharedHashmap<KeyType, ValueType>::Free() {
   // Free all the buckets.
   for (int i = 0; i < num_buckets_; ++i) {
     // We need to free everything in the linked list.
@@ -105,6 +118,9 @@ SharedHashmap<KeyType, ValueType>::~SharedHashmap() {
 
   // Free the base array.
   pool_->FreeArray<Bucket>(data_, num_buckets_);
+
+  // Free the mutex.
+  pool_->FreeType<Mutex>(lock_);
 }
 
 template <class KeyType, class ValueType>
@@ -142,6 +158,8 @@ SharedHashmap<KeyType, ValueType>::FindBucket(const KeyType &key) {
 template <class KeyType, class ValueType>
 void SharedHashmap<KeyType, ValueType>::AddOrSet(const KeyType &key,
                                                  const ValueType &value) {
+  MutexGrab(lock_);
+
   Bucket *bucket = FindBucket(key);
 
   if (bucket->occupied &&
@@ -158,16 +176,22 @@ void SharedHashmap<KeyType, ValueType>::AddOrSet(const KeyType &key,
   bucket->occupied = true;
 
   bucket->key = internal::StringSpecific<KeyType>::ConvertKey(key);
+
+  MutexRelease(lock_);
 }
 
 template <class KeyType, class ValueType>
 ValueType *SharedHashmap<KeyType, ValueType>::Fetch(const KeyType &key) {
+  MutexGrab(lock_);
+
   Bucket *bucket = FindBucket(key);
 
   if (!internal::StringSpecific<KeyType>::CompareKeys(key, bucket->key)) {
     // It's not there.
+    MutexRelease(lock_);
     return nullptr;
   }
 
+  MutexRelease(lock_);
   return &(bucket->value);
 }

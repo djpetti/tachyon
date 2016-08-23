@@ -287,13 +287,30 @@ void Pool::Free(uint8_t *block, int size) {
   int start_index, end_index;
   uint8_t start_mask, end_mask;
   const int offset = GetOffset(block);
-  DefineSegment(offset, size, &start_index, &start_mask, &end_index,
-                &end_mask);
+  DefineSegment(offset, size, &start_index, &start_mask, &end_index, &end_mask);
 
   // Set all the entries in the block allocation array for this segment to zero.
   SetSegment(start_index, start_mask, end_index, end_mask, 0);
 
   MutexRelease(&(header_->allocation_lock));
+}
+
+bool Pool::IsMemoryUsed(int offset) {
+  // First, find the index of the block in the block allocation array.
+  int start_index, end_index;
+  uint8_t start_mask, end_mask;
+  DefineSegment(offset, 1, &start_index, &start_mask, &end_index, &end_mask);
+
+  MutexGrab(&(header_->allocation_lock));
+
+  // Check if the block is being used.
+  if (start_mask & block_allocation_[start_index]) {
+    MutexRelease(&(header_->allocation_lock));
+    return true;
+  }
+
+  MutexRelease(&(header_->allocation_lock));
+  return false;
 }
 
 int Pool::get_size() const {

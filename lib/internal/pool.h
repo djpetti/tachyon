@@ -123,6 +123,13 @@ class Pool {
   //  True if it succeeds, false otherwise.
   void Clear();
 
+  // Checks if the block of memory at the specified offset is currently in use.
+  // Args:
+  //  offset: The offset of a byte in the block to check.
+  // Returns:
+  //  True if the memory is already in use, false otherwise.
+  bool IsMemoryUsed(int offset);
+
   // Gets the block size for the pool. This is the minimum amount of data that
   // can be allocated at one time. (Requesting less data will allocate one block
   // regardless.)
