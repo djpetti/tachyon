@@ -127,6 +127,19 @@ TEST_F(PoolTest, NonOverlapTest) {
   EXPECT_EQ(nullptr, reserved);
 }
 
+// Make sure the IsMemoryUsed() method works.
+TEST_F(PoolTest, IsMemoryUsedTest) {
+  // Initially, no memory should be used.
+  EXPECT_FALSE(pool_->IsMemoryUsed(0));
+
+  // Put something there.
+  uint8_t *reserved = pool_->AllocateAt(0, 1);
+  ASSERT_NE(nullptr, reserved);
+
+  // Now, it should reflect that.
+  EXPECT_TRUE(pool_->IsMemoryUsed(0));
+}
+
 }  // namespace testing
 }  // namespace internal
 }  // namespace gaia
