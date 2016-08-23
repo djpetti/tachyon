@@ -262,6 +262,23 @@ TEST_F(QueueTest, MpmcBlockingTest) {
   queue.FreeQueue();
 }
 
+// Tests that fetching queues by name works.
+TEST_F(QueueTest, FetchQueueTest) {
+  auto queue1 = Queue<int>::FetchQueue("test_queue1");
+  queue1->EnqueueBlocking(0);
+
+  auto queue2 = Queue<int>::FetchQueue("test_queue2");
+  queue2->EnqueueBlocking(1);
+
+  // Now, it should have given us different queues, so we should be able to read
+  // off the correct numbers.
+  int result1, result2;
+  queue1->DequeueNextBlocking(&result1);
+  queue2->DequeueNextBlocking(&result2);
+  EXPECT_EQ(0, result1);
+  EXPECT_EQ(1, result2);
+}
+
 }  // namespace testing
 }  // namespace internal
 }  // namespace gaia

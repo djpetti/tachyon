@@ -5,14 +5,12 @@
 #include <stdint.h>
 
 #include <memory>
-#include <string>
-#include <unordered_map>
-#include <utility>
 
 #include "atomics.h"
+#include "constants.h"
 #include "mpsc_queue.h"
 #include "pool.h"
-#include "shared_stl_allocator.h"
+#include "shared_hashmap.h"
 
 namespace gaia {
 namespace internal {
@@ -107,16 +105,12 @@ class Queue {
   //  name: The name of the queue to fetch.
   // Returns:
   //  The fetched queue.
-  static ::std::unique_ptr<Queue<T>> FetchQueue(const ::std::string &name);
+  static ::std::unique_ptr<Queue<T>> FetchQueue(const char *name);
   // Same as the method above, but the queue that it fetches can only be used as
   // a producer.
-  static ::std::unique_ptr<Queue<T>> FetchProducerQueue(const ::std::string &name);
+  static ::std::unique_ptr<Queue<T>> FetchProducerQueue(const char *name);
 
  private:
-  // This is the type we use for the shared allocator for our queue_names map.
-  typedef SharedStlAllocator<::std::pair<const ::std::string, int>>
-      QueueNamesAllocatorType;
-
   // Represents a single item in the queue_offsets list.
   struct Subqueue {
     // The actual offset.
@@ -138,6 +132,10 @@ class Queue {
     volatile Subqueue queue_offsets[kMaxConsumers];
   };
 
+  // A hashmap that's in charge of mapping queue names to offsets. This is how
+  // we implement fetching queues by name.
+  static SharedHashmap<const char *, int> queue_names_;
+
   // Adds a new subqueue to this queue. This is needed whenever a new consumer
   // comes along.
   void AddSubqueue();
@@ -149,7 +147,7 @@ class Queue {
   // Args:
   //  name: The name of the queue to fetch.
   //  consumer: Whether or not the queue should be a consumer queue.
-  static ::std::unique_ptr<Queue<T>> DoFetchQueue(const ::std::string &name,
+  static ::std::unique_ptr<Queue<T>> DoFetchQueue(const char *name,
                                                   bool consumer);
 
   RawQueue *queue_;
@@ -158,18 +156,17 @@ class Queue {
   // The last value of queue_->num_subqueues we saw.
   uint32_t last_num_subqueues_ = 0;
 
-  // A hashmap that's in charge of mapping queue names to offsets. This is how
-  // we implement fetching queues by name.
-  static ::std::unordered_map<::std::string, int, ::std::hash<::std::string>,
-                              ::std::equal_to<::std::string>,
-                              QueueNamesAllocatorType> queue_names_;
-
   // This is the underlying array of MPSC queues that we use to implement this
   // MPMC queue.
   MpscQueue<T> *subqueues_[kMaxConsumers];
   // The particular subqueue that we read off of.
   MpscQueue<T> *my_subqueue_ = nullptr;
 };
+
+// Initialize the queue_names_ member.
+template <class T>
+SharedHashmap<const char *, int> Queue<T>::queue_names_(kNameMapOffset,
+                                                        kNameMapSize);
 
 #include "queue_impl.h"
 

@@ -34,9 +34,10 @@ class SharedHashmap {
   // Gets the current value of an item in the map.
   // Args:
   //  key: The key of the item to fetch.
+  //  value: Will be set to the fetched value.
   // Returns:
-  //  A pointer to the fetched item, or nullptr if the item does not exist.
-  ValueType *Fetch(const KeyType &key);
+  //  True if the item exists, false otherwise.
+  bool Fetch(const KeyType &key, ValueType *value);
 
   // Frees the underlying shared memory associated with this map.
   // IMPORTANT: Only call this method when you are sure that you and
