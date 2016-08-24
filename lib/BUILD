@@ -1,4 +1,4 @@
 cc_library(
   name = "libgaia",
-  deps = ["//lib/internal:libgaia_internal"]
+  deps = ["//lib/ipc:libgaia_ipc"]
 )

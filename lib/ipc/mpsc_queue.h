@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_INTERNAL_MPSC_QUEUE_H_
-#define GAIA_LIB_INTERNAL_MPSC_QUEUE_H_
+#ifndef GAIA_LIB_IPC_MPSC_QUEUE_H_
+#define GAIA_LIB_IPC_MPSC_QUEUE_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -13,7 +13,7 @@
 #include "pool.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 
 // MPSC: "Multi-producer, single consumer."
 // Should be pretty self-explanatory...
@@ -185,7 +185,7 @@ class MpscQueue {
 
 #include "mpsc_queue_impl.h"
 
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia
 
-#endif  // GAIA_LIB_INTERNAL_MPSC_QUEUE_H_
+#endif  // GAIA_LIB_IPC_MPSC_QUEUE_H_

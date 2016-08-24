@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_INTERNAL_POOL_H_
-#define GAIA_LIB_INTERNAL_POOL_H_
+#ifndef GAIA_LIB_IPC_POOL_H_
+#define GAIA_LIB_IPC_POOL_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -8,7 +8,7 @@
 #include "constants.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 // So we can friend tests...
 namespace testing {
   class PoolTest_SharedTest_Test;
@@ -256,7 +256,7 @@ class Pool {
   static void DeleteSingletonPool();
 };
 
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia
 
-#endif  // GAIA_LIB_INTERNAL_POOL_H_
+#endif  // GAIA_LIB_IPC_POOL_H_

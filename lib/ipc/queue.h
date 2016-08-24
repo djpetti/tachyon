@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_INTERNAL_QUEUE_H_
-#define GAIA_LIB_INTERNAL_QUEUE_H_
+#ifndef GAIA_LIB_IPC_QUEUE_H_
+#define GAIA_LIB_IPC_QUEUE_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -13,7 +13,7 @@
 #include "shared_hashmap.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 
 // This is a fully MPSC queue. All non-blocking operations on this queue are
 // entirely lock-free and remain in userspace, aside from some of the
@@ -170,7 +170,7 @@ SharedHashmap<const char *, int> Queue<T>::queue_names_(kNameMapOffset,
 
 #include "queue_impl.h"
 
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia
 
-#endif  // GAIA_LIB_INTERNAL_QUEUE_H_
+#endif  // GAIA_LIB_IPC_QUEUE_H_

@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_INTERNAL_SHARED_HASHMAP_H_
-#define GAIA_LIB_INTERNAL_SHARED_HASHMAP_H_
+#ifndef GAIA_LIB_IPC_SHARED_HASHMAP_H_
+#define GAIA_LIB_IPC_SHARED_HASHMAP_H_
 
 #include <assert.h>
 #include <string.h>
@@ -11,7 +11,7 @@
 #include "pool.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 
 // A hashmap structure that is stored in shared memory.
 //
@@ -80,7 +80,7 @@ class SharedHashmap {
 
 #include "shared_hashmap_impl.h"
 
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia
 
 #endif // GAIA_LIB_INTERNAL_SHARED_HASHMAP_H_

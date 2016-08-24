@@ -10,7 +10,7 @@
 #include "macros.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 namespace {
 
 // Annoyingly, there is no Glibc wrapper for futex calls, so we have to make the
@@ -82,5 +82,5 @@ void MutexRelease(Mutex *mutex) {
   }
 }
 
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia

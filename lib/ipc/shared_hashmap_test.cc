@@ -3,7 +3,7 @@
 #include "shared_hashmap.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 namespace testing {
 
 // Test fixture for testing the SharedHashmap class.
@@ -101,5 +101,5 @@ TEST_F(SharedHashmapTest, OveruseTest) {
 }
 
 }  // namespace testing
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia
