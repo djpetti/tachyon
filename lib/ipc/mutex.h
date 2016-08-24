@@ -1,10 +1,10 @@
-#ifndef GAIA_LIB_INTERNAL_MUTEX_H_
-#define GAIA_LIB_INTERNAL_MUTEX_H_
+#ifndef GAIA_LIB_IPC_MUTEX_H_
+#define GAIA_LIB_IPC_MUTEX_H_
 
 #include <stdint.h>
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 
 // TODO (danielp): Priority-inversion futex calls.
 
@@ -51,7 +51,7 @@ void MutexGrab(Mutex *mutex);
 //  mutex: The mutex to release.
 void MutexRelease(Mutex *mutex);
 
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia
 
-#endif // GAIA_LIB_INTERNAL_MUTEX_H_
+#endif // GAIA_LIB_IPC_MUTEX_H_

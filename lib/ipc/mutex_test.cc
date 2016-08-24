@@ -5,7 +5,7 @@
 #include "mutex.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 namespace testing {
 namespace {
 
@@ -71,5 +71,5 @@ TEST_F(MutexTest, StressTest) {
 }
 
 }  // namespace testing
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia

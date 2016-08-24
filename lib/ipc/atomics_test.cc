@@ -5,7 +5,7 @@
 #include "atomics.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 namespace testing {
 
 // A test fixture for testing atomic functions.
@@ -82,5 +82,5 @@ TEST_F(AtomicsTest, DecrementTest) {
 }
 
 }  // namespace testing
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia

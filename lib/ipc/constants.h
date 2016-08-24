@@ -1,11 +1,11 @@
-#ifndef GAIA_LIB_INTERNAL_CONSTANTS_H_
-#define GAIA_LIB_INTERNAL_CONSTANTS_H_
+#ifndef GAIA_LIB_IPC_CONSTANTS_H_
+#define GAIA_LIB_IPC_CONSTANTS_H_
 
 // Contains constants that are used by various files in one place for easy
 // modification.
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 
 // Name of the shared memory block.
 const char *kShmName = "/gaia_core";
@@ -31,7 +31,7 @@ static constexpr int kNameMapSize = 128;
 // located.
 static constexpr int kNameMapOffset = 0;
 
-}
-}
+}  // namespace ipc
+}  // namespace gaia
 
-#endif // GAIA_LIB_INTERNAL_CONSTANTS_H_
+#endif // GAIA_LIB_IPC_CONSTANTS_H_

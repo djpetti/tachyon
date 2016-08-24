@@ -1,7 +1,7 @@
 #include "atomics.h"
 
 namespace gaia {
-namespace internal {
+namespace ipc {
 
 bool CompareExchange(volatile uint32_t *value, uint32_t old_val,
                      uint32_t new_val) {
@@ -90,5 +90,5 @@ void Fence() {
       :);
 }
 
-}  // namespace internal
+}  // namespace ipc
 }  // namespace gaia
