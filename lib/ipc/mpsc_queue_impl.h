@@ -150,7 +150,8 @@ bool MpscQueue<T>::DequeueNext(T *item) {
 
 template <class T>
 void MpscQueue<T>::DoDequeue(T *item, volatile Node *read_at) {
-  *item = read_at->value;
+  // Cast away the volatile, as it's going back into non-shared memory.
+  *item = const_cast<T&>(read_at->value);
 
   ++tail_index_;
   // The ANDing is so we can easily make our indices wrap when they reach the

@@ -9,10 +9,6 @@
 
 namespace gaia {
 namespace ipc {
-// So we can friend tests...
-namespace testing {
-  class PoolTest_SharedTest_Test;
-}
 
 // Manages a pool of shared memory that queue messages are made from.
 class Pool {
