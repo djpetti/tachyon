@@ -3,91 +3,44 @@
 namespace gaia {
 namespace ipc {
 
+// TODO (danielp): Investigate whether it is possible to relax some of the
+// memory ordering requirements in these functions.
 bool CompareExchange(volatile uint32_t *value, uint32_t old_val,
                      uint32_t new_val) {
-  volatile uint8_t ret;
-  __asm__ __volatile__(
-      "lock\n"
-      "cmpxchgl %2, %1\n"
-      "sete %0\n"
-      : "=q"(ret), "=m"(*value)
-      : "r"(new_val), "m"(*value), "a"(old_val)
-      : "memory");
-  return ret;
+  return __atomic_compare_exchange_n(value, &old_val, new_val, false,
+                                     __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
 }
 
 uint32_t ExchangeAdd(volatile uint32_t *dest, volatile int32_t source) {
-  __asm__ __volatile__(
-      "lock\n"
-      "xaddl %2, %3\n"
-      : "=r"(source), "=m"(*dest)
-      : "r"(source), "m"(*dest)
-      : "memory");
-  return source;
+  return __atomic_fetch_add(dest, source, __ATOMIC_SEQ_CST);
 }
 
 uint16_t ExchangeAddWord(volatile uint16_t *dest, volatile int16_t source) {
-  __asm__ __volatile__(
-      "lock\n"
-      "xaddw %2, %3\n"
-      : "=r"(source), "=m"(*dest)
-      : "r"(source), "m"(*dest)
-      : "memory");
-  return source;
+  return __atomic_fetch_add(dest, source, __ATOMIC_SEQ_CST);
 }
 
 uint32_t Exchange(volatile uint32_t *dest, volatile uint32_t source) {
-  __asm__ __volatile__(
-      "lock\n"
-      "xchgl %1, %0\n"
-      : "=r"(source), "=m"(*dest)
-      : "r"(source), "m"(*dest)
-      : "memory");
-  return source;
+  return __atomic_exchange_n(dest, source, __ATOMIC_SEQ_CST);
 }
 
 void BitwiseAnd(volatile uint32_t *dest, uint32_t mask) {
-  __asm__ __volatile__(
-      "lock\n"
-      "andl %1, %2\n"
-      : "=m"(*dest)
-      : "r"(mask), "m"(*dest)
-      : "memory");
+  __atomic_fetch_and(dest, mask, __ATOMIC_SEQ_CST);
 }
 
 void Decrement(volatile uint32_t *value) {
-  __asm__ __volatile__(
-      "lock\n"
-      "decl %1\n"
-      : "=m"(*value)
-      : "m"(*value)
-      : "memory");
+  __atomic_fetch_sub(value, 1, __ATOMIC_SEQ_CST);
 }
 
 void Increment(volatile uint32_t *value) {
-  __asm__ __volatile__(
-      "lock\n"
-      "incl %1\n"
-      : "=m"(*value)
-      : "m"(*value)
-      : "memory");
+  __atomic_fetch_add(value, 1, __ATOMIC_SEQ_CST);
 }
 
 void IncrementWord(volatile uint16_t *value) {
-  __asm__ __volatile__(
-      "lock\n"
-      "incw %1\n"
-      : "=m"(*value)
-      : "m"(*value)
-      : "memory");
+  __atomic_fetch_add(value, 1, __ATOMIC_SEQ_CST);
 }
 
 void Fence() {
-  __asm__ __volatile__(
-      "mfence\n"
-      :
-      :
-      :);
+  __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
 
 }  // namespace ipc

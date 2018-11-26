@@ -18,6 +18,10 @@ cc_test(
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_ipc"],
   linkopts = ["-lrt"],
+  # This test uses the shared memory. If multiple tests that use it try to run
+  # at the same time, it crashes and burns.
+  tags = ["exclusive"],
+  size = "small",
 )
 
 cc_test(
@@ -25,6 +29,7 @@ cc_test(
   srcs = ["mutex_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_ipc"],
+  size = "small",
 )
 
 cc_test(
@@ -32,6 +37,9 @@ cc_test(
   srcs = ["mpsc_queue_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_ipc"],
+  # This test uses the shared memory.
+  tags = ["exclusive"],
+  size = "small",
 )
 
 cc_test(
@@ -39,6 +47,7 @@ cc_test(
   srcs = ["atomics_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_ipc"],
+  size = "small",
 )
 
 cc_test(
@@ -46,6 +55,9 @@ cc_test(
   srcs = ["queue_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_ipc"],
+  # This test uses the shared memory.
+  tags = ["exclusive"],
+  size = "small",
 )
 
 cc_test(
@@ -53,4 +65,7 @@ cc_test(
   srcs = ["shared_hashmap_test.cc"],
   copts = ["-Iexternal/gtest/include"],
   deps = ["@gtest//:main", ":libgaia_ipc"],
+  # This test uses the shared memory.
+  tags = ["exclusive"],
+  size = "small",
 )
