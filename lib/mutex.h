@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 namespace gaia {
-namespace ipc {
 
 // TODO (danielp): Priority-inversion futex calls.
 
@@ -51,7 +50,6 @@ void MutexGrab(Mutex *mutex);
 //  mutex: The mutex to release.
 void MutexRelease(Mutex *mutex);
 
-}  // namespace ipc
 }  // namespace gaia
 
 #endif // GAIA_LIB_IPC_MUTEX_H_

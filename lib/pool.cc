@@ -14,7 +14,6 @@
 #include "macros.h"
 
 namespace gaia {
-namespace ipc {
 namespace {
 
 // Given a start offset and a size, it figures out the start and end indices and
@@ -420,5 +419,4 @@ void Pool::DeleteSingletonPool() {
   delete singleton_pool_;
 }
 
-}  // namespace ipc
 }  // namespace gaia

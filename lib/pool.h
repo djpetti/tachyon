@@ -8,7 +8,6 @@
 #include "constants.h"
 
 namespace gaia {
-namespace ipc {
 
 // Manages a pool of shared memory that queue messages are made from.
 class Pool {
@@ -252,7 +251,6 @@ class Pool {
   static void DeleteSingletonPool();
 };
 
-}  // namespace ipc
 }  // namespace gaia
 
 #endif  // GAIA_LIB_IPC_POOL_H_

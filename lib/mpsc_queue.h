@@ -13,7 +13,6 @@
 #include "pool.h"
 
 namespace gaia {
-namespace ipc {
 
 // MPSC: "Multi-producer, single consumer."
 // Should be pretty self-explanatory...
@@ -185,7 +184,6 @@ class MpscQueue {
 
 #include "mpsc_queue_impl.h"
 
-}  // namespace ipc
 }  // namespace gaia
 
 #endif  // GAIA_LIB_IPC_MPSC_QUEUE_H_

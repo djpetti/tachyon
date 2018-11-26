@@ -5,7 +5,6 @@
 // modification.
 
 namespace gaia {
-namespace ipc {
 
 // Name of the shared memory block.
 const char *kShmName = "/gaia_core";
@@ -31,7 +30,6 @@ static constexpr int kNameMapSize = 128;
 // located.
 static constexpr int kNameMapOffset = 0;
 
-}  // namespace ipc
 }  // namespace gaia
 
 #endif // GAIA_LIB_IPC_CONSTANTS_H_

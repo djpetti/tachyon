@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 namespace gaia {
-namespace ipc {
 
 // Uses some assembly magic to perform an atomic compare-and-swap operation on
 // a 32-bit int.
@@ -65,7 +64,6 @@ void IncrementWord(volatile uint16_t *value);
 // that breaks lock-free code.
 void Fence();
 
-}  // namespace ipc
 }  // namespace gaia
 
 #endif  // GAIA_LIB_IPC_ATOMICS_H_

@@ -6,7 +6,6 @@
 #include "pool.h"
 
 namespace gaia {
-namespace ipc {
 namespace testing {
 
 // Test fixture for testing the pool class.
@@ -141,5 +140,4 @@ TEST_F(PoolTest, IsMemoryUsedTest) {
 }
 
 }  // namespace testing
-}  // namespace ipc
 }  // namespace gaia

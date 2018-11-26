@@ -1,7 +1,6 @@
 #include "atomics.h"
 
 namespace gaia {
-namespace ipc {
 
 // TODO (danielp): Investigate whether it is possible to relax some of the
 // memory ordering requirements in these functions.
@@ -43,5 +42,4 @@ void Fence() {
   __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
 
-}  // namespace ipc
 }  // namespace gaia

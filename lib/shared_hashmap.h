@@ -11,7 +11,6 @@
 #include "pool.h"
 
 namespace gaia {
-namespace ipc {
 
 // A hashmap structure that is stored in shared memory.
 //
@@ -80,7 +79,6 @@ class SharedHashmap {
 
 #include "shared_hashmap_impl.h"
 
-}  // namespace ipc
 }  // namespace gaia
 
 #endif // GAIA_LIB_INTERNAL_SHARED_HASHMAP_H_
