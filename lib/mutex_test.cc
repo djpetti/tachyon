@@ -4,7 +4,7 @@
 
 #include "mutex.h"
 
-namespace gaia {
+namespace tachyon {
 namespace testing {
 namespace {
 
@@ -70,4 +70,4 @@ TEST_F(MutexTest, StressTest) {
 }
 
 }  // namespace testing
-}  // namespace gaia
+}  // namespace tachyon

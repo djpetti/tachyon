@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_IPC_SHARED_HASHMAP_H_
-#define GAIA_LIB_IPC_SHARED_HASHMAP_H_
+#ifndef TACHYON_LIB_IPC_SHARED_HASHMAP_H_
+#define TACHYON_LIB_IPC_SHARED_HASHMAP_H_
 
 #include <assert.h>
 #include <string.h>
@@ -10,7 +10,7 @@
 #include "mutex.h"
 #include "pool.h"
 
-namespace gaia {
+namespace tachyon {
 
 // A hashmap structure that is stored in shared memory.
 //
@@ -79,6 +79,6 @@ class SharedHashmap {
 
 #include "shared_hashmap_impl.h"
 
-}  // namespace gaia
+}  // namespace tachyon
 
-#endif // GAIA_LIB_INTERNAL_SHARED_HASHMAP_H_
+#endif // TACHYON_LIB_INTERNAL_SHARED_HASHMAP_H_

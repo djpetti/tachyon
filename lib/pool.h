@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_IPC_POOL_H_
-#define GAIA_LIB_IPC_POOL_H_
+#ifndef TACHYON_LIB_IPC_POOL_H_
+#define TACHYON_LIB_IPC_POOL_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -7,7 +7,7 @@
 #include "mutex.h"
 #include "constants.h"
 
-namespace gaia {
+namespace tachyon {
 
 // Manages a pool of shared memory that queue messages are made from.
 class Pool {
@@ -251,6 +251,6 @@ class Pool {
   static void DeleteSingletonPool();
 };
 
-}  // namespace gaia
+}  // namespace tachyon
 
-#endif  // GAIA_LIB_IPC_POOL_H_
+#endif  // TACHYON_LIB_IPC_POOL_H_

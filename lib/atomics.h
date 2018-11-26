@@ -1,9 +1,9 @@
-#ifndef GAIA_LIB_IPC_ATOMICS_H_
-#define GAIA_LIB_IPC_ATOMICS_H_
+#ifndef TACHYON_LIB_IPC_ATOMICS_H_
+#define TACHYON_LIB_IPC_ATOMICS_H_
 
 #include <stdint.h>
 
-namespace gaia {
+namespace tachyon {
 
 // Uses some assembly magic to perform an atomic compare-and-swap operation on
 // a 32-bit int.
@@ -64,6 +64,6 @@ void IncrementWord(volatile uint16_t *value);
 // that breaks lock-free code.
 void Fence();
 
-}  // namespace gaia
+}  // namespace tachyon
 
-#endif  // GAIA_LIB_IPC_ATOMICS_H_
+#endif  // TACHYON_LIB_IPC_ATOMICS_H_

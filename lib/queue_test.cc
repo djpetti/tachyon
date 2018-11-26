@@ -7,7 +7,7 @@
 #include "pool.h"
 #include "queue.h"
 
-namespace gaia {
+namespace tachyon {
 namespace testing {
 namespace {
 
@@ -277,4 +277,4 @@ TEST_F(QueueTest, FetchQueueTest) {
 }
 
 }  // namespace testing
-}  // namespace gaia
+}  // namespace tachyon

@@ -1,5 +1,5 @@
-#ifndef GAIA_LIB_IPC_QUEUE_H_
-#define GAIA_LIB_IPC_QUEUE_H_
+#ifndef TACHYON_LIB_IPC_QUEUE_H_
+#define TACHYON_LIB_IPC_QUEUE_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -12,7 +12,7 @@
 #include "pool.h"
 #include "shared_hashmap.h"
 
-namespace gaia {
+namespace tachyon {
 
 // This is a fully MPSC queue. All non-blocking operations on this queue are
 // entirely lock-free and remain in userspace, aside from some of the
@@ -169,6 +169,6 @@ SharedHashmap<const char *, int> Queue<T>::queue_names_(kNameMapOffset,
 
 #include "queue_impl.h"
 
-}  // namespace gaia
+}  // namespace tachyon
 
-#endif  // GAIA_LIB_IPC_QUEUE_H_
+#endif  // TACHYON_LIB_IPC_QUEUE_H_

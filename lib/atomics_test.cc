@@ -4,7 +4,7 @@
 
 #include "atomics.h"
 
-namespace gaia {
+namespace tachyon {
 namespace testing {
 
 // A test fixture for testing atomic functions.
@@ -81,4 +81,4 @@ TEST_F(AtomicsTest, DecrementTest) {
 }
 
 }  // namespace testing
-}  // namespace gaia
+}  // namespace tachyon

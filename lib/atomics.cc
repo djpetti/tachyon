@@ -1,6 +1,6 @@
 #include "atomics.h"
 
-namespace gaia {
+namespace tachyon {
 
 // TODO (danielp): Investigate whether it is possible to relax some of the
 // memory ordering requirements in these functions.
@@ -42,4 +42,4 @@ void Fence() {
   __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
 
-}  // namespace gaia
+}  // namespace tachyon

@@ -9,7 +9,7 @@
 #include "atomics.h"
 #include "macros.h"
 
-namespace gaia {
+namespace tachyon {
 namespace {
 
 // Annoyingly, there is no Glibc wrapper for futex calls, so we have to make the
@@ -81,4 +81,4 @@ void MutexRelease(Mutex *mutex) {
   }
 }
 
-}  // namespace gaia
+}  // namespace tachyon

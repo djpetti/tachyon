@@ -6,7 +6,7 @@
 #include "pool.h"
 #include "mpsc_queue.h"
 
-namespace gaia {
+namespace tachyon {
 namespace testing {
 namespace {
 
@@ -263,4 +263,4 @@ TEST_F(MpscQueueTest, BlockingAndNonBlockingTest) {
 }
 
 }  // namespace testing
-}  // namespace gaia
+}  // namespace tachyon

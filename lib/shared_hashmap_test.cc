@@ -2,7 +2,7 @@
 
 #include "shared_hashmap.h"
 
-namespace gaia {
+namespace tachyon {
 namespace testing {
 
 // Test fixture for testing the SharedHashmap class.
@@ -100,4 +100,4 @@ TEST_F(SharedHashmapTest, OveruseTest) {
 }
 
 }  // namespace testing
-}  // namespace gaia
+}  // namespace tachyon

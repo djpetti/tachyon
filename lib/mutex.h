@@ -1,9 +1,9 @@
-#ifndef GAIA_LIB_IPC_MUTEX_H_
-#define GAIA_LIB_IPC_MUTEX_H_
+#ifndef TACHYON_LIB_IPC_MUTEX_H_
+#define TACHYON_LIB_IPC_MUTEX_H_
 
 #include <stdint.h>
 
-namespace gaia {
+namespace tachyon {
 
 // TODO (danielp): Priority-inversion futex calls.
 
@@ -50,6 +50,6 @@ void MutexGrab(Mutex *mutex);
 //  mutex: The mutex to release.
 void MutexRelease(Mutex *mutex);
 
-}  // namespace gaia
+}  // namespace tachyon
 
-#endif // GAIA_LIB_IPC_MUTEX_H_
+#endif // TACHYON_LIB_IPC_MUTEX_H_
