@@ -132,7 +132,7 @@ SharedHashmap<KeyType, ValueType>::FindBucket(const KeyType &key) {
   location %= num_buckets_;
 
   Bucket *bucket = data_ + location;
-  Bucket *end_bucket;
+  Bucket *end_bucket = nullptr;
   while (bucket) {
     if (bucket->occupied) {
       // Something's there already.
@@ -151,6 +151,9 @@ SharedHashmap<KeyType, ValueType>::FindBucket(const KeyType &key) {
     }
   }
 
+  // We should always find some bucket assuming the map is working
+  // correctly.
+  assert(end_bucket != nullptr);
   // It's not at this position.
   return end_bucket;
 }
