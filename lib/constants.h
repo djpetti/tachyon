@@ -7,7 +7,7 @@
 namespace tachyon {
 
 // Name of the shared memory block.
-const char *kShmName = "/tachyon_core";
+extern const char *kShmName;
 // We allocate portions of SHM in blocks. This block size should be chosen to
 // balance overhead with wasted space, and ideally the page size should be
 // an integer multiple of this number.

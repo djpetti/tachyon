@@ -7,7 +7,7 @@ filegroup(
 
 cc_library(
   name = "tachyon",
-  srcs = ["pool.cc", "mutex.cc", "atomics.cc"],
+  srcs = ["pool.cc", "mutex.cc", "atomics.cc", "constants.cc"],
   hdrs = [":tachyon_hdrs"],
   linkopts = ["-lrt"],
 )
