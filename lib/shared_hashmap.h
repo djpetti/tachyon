@@ -57,6 +57,14 @@ class SharedHashmap {
     Bucket *next;
   };
 
+  // Structure that we use internally to organize all our state that goes in SHM.
+  struct ShmData {
+    // The underlying array that we use to store data.
+    Bucket *data;
+    // A mutex that we use to protect concurrent hashtable operations.
+    Mutex *lock;
+  };
+
   // Gets nearest bucket to where an element should go.
   // Args:
   //  key: The key of an element we're looking for.
@@ -68,9 +76,11 @@ class SharedHashmap {
 
   // The pool we use to store data.
   Pool *pool_;
-  // The underlying array used to store data. This is located in SHM.
+
+  // Data located in SHM.
+  ShmData *shm_;
+  // Aliases to the contents of SHM.
   Bucket *data_;
-  // A mutex that we use to protect concurrent hashtable operations.
   Mutex *lock_;
 
   // The number of "buckets" for storing items the map will have.

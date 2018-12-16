@@ -83,8 +83,12 @@ SharedHashmap<KeyType, ValueType>::SharedHashmap(int offset, int num_buckets)
   // we assume that someone has already made a hashtable at this offset, and we
   // can just use it.
   if (!pool_->IsMemoryUsed(offset)) {
+    // Allocate the underlying SHM data header.
+    shm_ = pool_->AllocateForTypeAt<ShmData>(offset);
+    assert(shm_ && "Failed to allocate shared data header.");
+
     // Allocate the underlying array in shared memory.
-    data_ = pool_->AllocateForArrayAt<Bucket>(offset, num_buckets_);
+    data_ = pool_->AllocateForArray<Bucket>(num_buckets_);
     assert(data_ && "Failed to allocate shared hash table.");
 
     // Initialize the buckets.
@@ -95,11 +99,18 @@ SharedHashmap<KeyType, ValueType>::SharedHashmap(int offset, int num_buckets)
 
     // Initialize the mutex.
     lock_ = pool_->AllocateForType<Mutex>();
+    assert(lock_ && "Failed to allocate hashtable lock.");
     MutexInit(lock_);
+
+    // Update the header.
+    shm_->data = data_;
+    shm_->lock = lock_;
 
   } else {
     // Just use the existing memory.
-    data_ = pool_->AtOffset<Bucket>(offset);
+    shm_ = pool_->AtOffset<ShmData>(offset);
+    data_ = shm_->data;
+    lock_ = shm_->lock;
   }
 }
 

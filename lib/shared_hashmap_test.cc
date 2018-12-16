@@ -11,7 +11,7 @@ class SharedHashmapTest : public ::testing::Test {
   // Map offset.
   static constexpr int kOffset = 0;
   // Map size.
-  static constexpr int kSize = 128;
+  static constexpr int kSize = 10;
 
   virtual void SetUp() {
     // Clear the pool in between, so tests don't affect each-other.
@@ -65,7 +65,7 @@ TEST_F(SharedHashmapTest, NonexistentTest) {
 // Strings as keys are handled separately, so it's worth making sure that we can
 // successfully use something else as a key as well.
 TEST_F(SharedHashmapTest, NonStringKeyTest) {
-  SharedHashmap<int, int> map(5000, 128);
+  SharedHashmap<int, int> map(1000, 10);
 
   map.AddOrSet(5, 6);
 
@@ -78,6 +78,8 @@ TEST_F(SharedHashmapTest, NonStringKeyTest) {
 
   ASSERT_TRUE(map.Fetch(5, &result));
   EXPECT_EQ(7, result);
+
+  map.Free();
 }
 
 // Make sure it handles buckets with multiple items.
