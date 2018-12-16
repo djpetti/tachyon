@@ -237,8 +237,14 @@ uint8_t *Pool::AllocateAt(int start_byte, int size) {
   // First, make sure that the requested blocks are free.
   // Start with the beginning and end bytes, creating masks to we can check the
   // appropriate bits.
-  const uint8_t start_free_mask = ~(start_mask - 1);
-  const uint8_t end_free_mask = (end_mask << 1) - 1;
+  uint8_t start_free_mask = ~(start_mask - 1);
+  uint8_t end_free_mask = (end_mask << 1) - 1;
+  if (start_index == end_index) {
+    // If we start and end on the same block, we don't wan't to include bits
+    // before the start index or after the end index.
+    end_free_mask &= start_free_mask;
+    start_free_mask &= end_free_mask;
+  }
   if (block_allocation_[start_index] & start_free_mask) {
     MutexRelease(&(header_->allocation_lock));
     return nullptr;

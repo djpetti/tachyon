@@ -94,6 +94,20 @@ TEST_F(PoolTest, PlacementAllocationTest) {
   EXPECT_EQ(42, pool_->GetOffset(reserved));
 }
 
+// Tests that placement allocation works with a single block.
+TEST_F(PoolTest, PlacementAllocationSingleBlock) {
+  // Allocate the blocks around it to give it the maximal chance of failing.
+  ASSERT_NE(nullptr, pool_->AllocateAt(0, 1));
+  ASSERT_NE(nullptr, pool_->AllocateAt(2 * kBlockSize + 1, 1));
+
+  // Allocate a single block.
+  void *reserved = pool_->AllocateAt(kBlockSize + 1, 1);
+  ASSERT_NE(nullptr, reserved);
+
+  // Make sure it actually put it at the right spot.
+  EXPECT_EQ(kBlockSize + 1, pool_->GetOffset(reserved));
+}
+
 // Make sure normal allocations work around placement allocations.
 TEST_F(PoolTest, NonOverlapTest) {
   // Allocate memory at a specific offset.
