@@ -103,14 +103,14 @@ SharedHashmap<KeyType, ValueType>::SharedHashmap(int offset, int num_buckets)
     MutexInit(lock_);
 
     // Update the header.
-    shm_->data = data_;
-    shm_->lock = lock_;
+    shm_->data_offset = pool_->GetOffset(data_);
+    shm_->lock_offset = pool_->GetOffset(lock_);
 
   } else {
     // Just use the existing memory.
     shm_ = pool_->AtOffset<ShmData>(offset);
-    data_ = shm_->data;
-    lock_ = shm_->lock;
+    data_ = pool_->AtOffset<Bucket>(shm_->data_offset);
+    lock_ = pool_->AtOffset<Mutex>(shm_->lock_offset);
   }
 }
 

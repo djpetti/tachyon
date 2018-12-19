@@ -2,6 +2,7 @@
 #define TACHYON_LIB_IPC_SHARED_HASHMAP_H_
 
 #include <assert.h>
+#include <stdint.h>
 #include <string.h>
 
 #include <functional>
@@ -57,12 +58,14 @@ class SharedHashmap {
     Bucket *next;
   };
 
-  // Structure that we use internally to organize all our state that goes in SHM.
+  // Structure that we use internally to organize all our state that goes in
+  // SHM.
   struct ShmData {
-    // The underlying array that we use to store data.
-    Bucket *data;
-    // A mutex that we use to protect concurrent hashtable operations.
-    Mutex *lock;
+    // The SHM offset of the underlying array that we use to store data.
+    uint32_t data_offset;
+    // The SHM offset of the mutex that we use to protect concurrent hashtable
+    // operations.
+    uint32_t lock_offset;
   };
 
   // Gets nearest bucket to where an element should go.
@@ -91,4 +94,4 @@ class SharedHashmap {
 
 }  // namespace tachyon
 
-#endif // TACHYON_LIB_INTERNAL_SHARED_HASHMAP_H_
+#endif  // TACHYON_LIB_INTERNAL_SHARED_HASHMAP_H_
