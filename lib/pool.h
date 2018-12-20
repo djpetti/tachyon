@@ -18,7 +18,7 @@ class Pool {
   // Returns:
   //  A pointer to the start of the allocated block, or nullptr if there is no
   //  more memory left.
-  uint8_t *Allocate(int size);
+  uint8_t *Allocate(uint32_t size);
   // Reserves a block of memory in the pool at a particular offset. Success is
   // only guaranteed if all calls to this method come before any calls to
   // Allocate(), no requests overlap, and size is smaller than the pool size.
@@ -28,7 +28,7 @@ class Pool {
   // Returns:
   //  A pointer to the allocated block, or nullptr if the memory requested was
   //  not available.
-  uint8_t *AllocateAt(int start_byte, int size);
+  uint8_t *AllocateAt(uint64_t start_byte, uint32_t size);
 
   // A helper function to allocate enough space to hold a specific type.
   // Returns:
@@ -101,7 +101,7 @@ class Pool {
   // Returns:
   //  A pointer to the data at that offset.
   template <class T>
-  T *AtOffset(int offset) {
+  T *AtOffset(uintptr_t offset) {
     assert(offset < header_->size && "Out-of-bounds.");
     uint8_t *byte = data_ + offset;
     return reinterpret_cast<T *>(byte);
@@ -111,11 +111,9 @@ class Pool {
   //  shared_object: The pointer to get the offset for.
   // Returns:
   //  The calculated offset.
-  int GetOffset(const void *shared_object) const;
+  uintptr_t GetOffset(const void *shared_object) const;
 
   // Forcefully clears the pool.
-  // Returns:
-  //  True if it succeeds, false otherwise.
   void Clear();
 
   // Checks if the block of memory at the specified offset is currently in use.
@@ -169,9 +167,9 @@ class Pool {
   // for any given application.
   struct PoolHeader {
     // The size of the pool in bytes.
-    int size;
+    uint64_t size;
     // The number of blocks in the pool.
-    int num_blocks;
+    uint64_t num_blocks;
 
     // Use this lock to protect allocations.
     Mutex allocation_lock;

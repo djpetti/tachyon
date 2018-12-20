@@ -1,6 +1,8 @@
 #ifndef TACHYON_LIB_IPC_CONSTANTS_H_
 #define TACHYON_LIB_IPC_CONSTANTS_H_
 
+#include <stdint.h>
+
 // Contains constants that are used by various files in one place for easy
 // modification.
 
@@ -11,7 +13,7 @@ extern const char *kShmName;
 // We allocate portions of SHM in blocks. This block size should be chosen to
 // balance overhead with wasted space, and ideally the page size should be
 // an integer multiple of this number.
-constexpr int kBlockSize = 128;
+constexpr uint32_t kBlockSize = 128;
 
 // How many items we want our queues to be able to hold. This constant
 // designates how many times to << 1 in order to get that number.

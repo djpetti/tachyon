@@ -62,10 +62,10 @@ class SharedHashmap {
   // SHM.
   struct ShmData {
     // The SHM offset of the underlying array that we use to store data.
-    uint32_t data_offset;
+    uintptr_t data_offset;
     // The SHM offset of the mutex that we use to protect concurrent hashtable
     // operations.
-    uint32_t lock_offset;
+    uintptr_t lock_offset;
   };
 
   // Gets nearest bucket to where an element should go.

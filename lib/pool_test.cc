@@ -91,7 +91,7 @@ TEST_F(PoolTest, PlacementAllocationTest) {
   ASSERT_NE(nullptr, reserved);
 
   // Make sure it actually put it at the right spot.
-  EXPECT_EQ(42, pool_->GetOffset(reserved));
+  EXPECT_EQ(42U, pool_->GetOffset(reserved));
 }
 
 // Tests that placement allocation works with a single block.

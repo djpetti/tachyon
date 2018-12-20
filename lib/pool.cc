@@ -109,7 +109,7 @@ void Pool::BuildExistingPool(int fd, int size) {
   data_ = pool + header_overhead;
 }
 
-uint8_t *Pool::Allocate(int size) {
+uint8_t *Pool::Allocate(uint32_t size) {
   assert(size && "Allocating zero-length block?");
 
   // Grab the lock while we're doing stuff.
@@ -126,8 +126,8 @@ uint8_t *Pool::Allocate(int size) {
   // Find the smallest available memory block that still works.
   bool in_free_segment = false;
   bool set_segment = false;
-  int segment_size = 0;
-  int smallest_size = INT_MAX;
+  uint64_t segment_size = 0;
+  uint64_t smallest_size = -1; // Max value.
   uint8_t start_mask = 0;
   uint8_t start_mask_shifts = 0;
   int start_index = -1;
@@ -138,16 +138,16 @@ uint8_t *Pool::Allocate(int size) {
     // Ending bit mask.
     uint8_t end_mask;
     // Segment start byte index.
-    int start_index;
+    int64_t start_index;
     // Segment end byte index.
-    int end_index;
+    int64_t end_index;
     // The actual start byte of this segment in data_.
-    int start_byte;
+    int64_t start_byte;
   };
   Segment segment = {0, 0, -1, -1, -1};
   Segment smallest_segment = segment;
 
-  int saw_blocks = 0;
+  uint64_t saw_blocks = 0;
 
   for (int i = 0; i < block_bytes_; ++i) {
     uint8_t mask_shifts = 0;
@@ -203,7 +203,7 @@ uint8_t *Pool::Allocate(int size) {
     }
   }
 
-  if (smallest_size != INT_MAX) {
+  if (smallest_size != (uint64_t)-1) {
     // Set the segment as occupied.
     SetSegment(smallest_segment.start_index, smallest_segment.start_mask,
                smallest_segment.end_index, smallest_segment.end_mask, 1);
@@ -220,7 +220,7 @@ uint8_t *Pool::Allocate(int size) {
   return nullptr;
 }
 
-uint8_t *Pool::AllocateAt(int start_byte, int size) {
+uint8_t *Pool::AllocateAt(uint64_t start_byte, uint32_t size) {
   // Check to make sure that this fits in the pool.
   assert(start_byte + size <= header_->size &&
          "Cannot allocate a segment this big.");
@@ -403,7 +403,7 @@ uint8_t *Pool::MapShm(int size, int fd, int *data_size, int *num_blocks,
   return static_cast<uint8_t *>(raw_pool);
 }
 
-int Pool::GetOffset(const void *shared_object) const {
+uintptr_t Pool::GetOffset(const void *shared_object) const {
   return reinterpret_cast<const uint8_t *>(shared_object) - data_;
 }
 
