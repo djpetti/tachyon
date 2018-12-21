@@ -13,17 +13,20 @@
 
 namespace tachyon {
 
-// A hashmap structure that is stored in shared memory.
+// A hashmap structure that is stored in shared memory. Normally, the
+// implementation with two template parameters should be used. This one is only
+// for the case when the actual value stored in shared memory for the key is
+// different from the keys that are passed in.
 //
 // NOTE: Do not use as keys or values anything that is not trivially copyable.
 // The only exception is C strings, which can be safely used as keys.
-template <class KeyType, class ValueType>
-class SharedHashmap {
+template <class KeyType, class ConvKeyType, class ValueType>
+class SharedHashmapInt {
  public:
   // Args:
   //  offset: The location in memory where the map will be created.
   //  num_buckets: The number of "buckets" for storing items the map will have.
-  SharedHashmap(int offset, int num_buckets);
+  SharedHashmapInt(int offset, int num_buckets);
 
   // Add a new item to the map, or modify an existing item.
   // Args:
@@ -50,7 +53,7 @@ class SharedHashmap {
     // Whether this bucket is occupied.
     bool occupied;
     // The key stored here.
-    KeyType key;
+    ConvKeyType key;
     // The actual value stored here.
     ValueType value;
     // A pointer to the next node in a linked list. This is used if we have
@@ -88,6 +91,35 @@ class SharedHashmap {
 
   // The number of "buckets" for storing items the map will have.
   int num_buckets_;
+};
+
+template <class KeyType, class ValueType>
+class SharedHashmap {
+ public:
+  SharedHashmap(int offset, int num_buckets);
+
+  void AddOrSet(const KeyType &key, const ValueType &value);
+  bool Fetch(const KeyType &key, ValueType *value);
+  void Free();
+
+ private:
+  // Internal fully-specialized SharedHashmap.
+  SharedHashmapInt<KeyType, KeyType, ValueType> map_;
+};
+
+// Specialization for string keys.
+template <class ValueType>
+class SharedHashmap<const char *, ValueType> {
+ public:
+  SharedHashmap(int offset, int num_buckets);
+
+  void AddOrSet(const char *key, const ValueType &value);
+  bool Fetch(const char *key, ValueType *value);
+  void Free();
+
+ private:
+  // Internal fully-specialized SharedHashmap.
+  SharedHashmapInt<const char *, uintptr_t, ValueType> map_;
 };
 
 #include "shared_hashmap_impl.h"
