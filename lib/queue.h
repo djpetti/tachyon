@@ -1,5 +1,5 @@
-#ifndef TACHYON_LIB_IPC_QUEUE_H_
-#define TACHYON_LIB_IPC_QUEUE_H_
+#ifndef TACHYON_LIB_QUEUE_H_
+#define TACHYON_LIB_QUEUE_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -10,6 +10,7 @@
 #include "constants.h"
 #include "mpsc_queue.h"
 #include "pool.h"
+#include "queue_interface.h"
 #include "shared_hashmap.h"
 
 namespace tachyon {
@@ -37,7 +38,7 @@ namespace tachyon {
 // want to give both threads access to the queue, make two different queue
 // instances with the same queue_offset parameter.
 template <class T>
-class Queue {
+class Queue : public QueueInterface<T> {
  public:
   // Args:
   //  consumer: By default, items can be read from the queue using this
@@ -56,46 +57,16 @@ class Queue {
   //  RawQueue object.
   //  consumer: See above for explanation.
   Queue(int queue_offset, bool consumer = true);
-  ~Queue();
+  virtual ~Queue();
 
-  // Adds a new element to the queue, without blocking. It is lock-free, and
-  // stays in userspace.
-  // Args:
-  //  item: The item to add to the queue.
-  // Returns:
-  //  True if it succeeded in adding the item, false if the queue was
-  //  full already.
-  bool Enqueue(const T &item);
-  // Adds a new element to the queue, and blocks if there isn't space.
-  // Args:
-  //  item: The item to add to the queue.
-  // Returns:
-  //  True if writing the message succeeded, false if there were no consumers to
-  //  write it to.
-  bool EnqueueBlocking(const T &item);
+  virtual bool Enqueue(const T &item);
+  virtual bool EnqueueBlocking(const T &item);
+  virtual bool DequeueNext(T *item);
+  virtual void DequeueNextBlocking(T *item);
 
-  // Removes an element from the queue, without blocking. It is lock-free, and
-  // stays in userspace.
-  // Args:
-  //  item: A place to copy the item.
-  // Returns:
-  //  True if it succeeded in getting an item, false if the queue was empty
-  //  already.
-  bool DequeueNext(T *item);
-  // Removes an element from the queue, and blocks if the queue is empty.
-  // Args:
-  //  item: A place to copy the item.
-  void DequeueNextBlocking(T *item);
+  virtual int GetOffset() const;
 
-  // Gets the offset in the pool of the shared memory portion of this queue.
-  // Returns:
-  //  The offset.
-  int GetOffset() const;
-
-  // Frees the underlying shared memory associated with this queue. Use this
-  // method carefully, because once called, any futher operations on this
-  // queue from any thread or process produce undefined results.
-  void FreeQueue();
+  virtual void FreeQueue();
 
   // Fetches a queue with the given name. If the queue does not exist, it
   // creates it. Otherwise, it fetches a new handle to the existing queue.
@@ -171,4 +142,4 @@ SharedHashmap<const char *, int> Queue<T>::queue_names_(kNameMapOffset,
 
 }  // namespace tachyon
 
-#endif  // TACHYON_LIB_IPC_QUEUE_H_
+#endif  // TACHYON_LIB_QUEUE_H_
