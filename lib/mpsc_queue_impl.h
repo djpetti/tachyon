@@ -1,47 +1,5 @@
 // NOTE: This file is not meant to be #included directly. Use mpsc_queue.h instead.
 
-namespace internal {
-
-// Memcpy-like function that handles a volatile destination buffer.
-// Args:
-//  dest: The destination volatile buffer.
-//  src: The source buffer. (Non-volatile).
-//  length: How many bytes to copy.
-// Returns:
-//  The destination address.
-volatile void *VolatileCopy(volatile void *__restrict__ dest,
-                            const void *__restrict__ src, uint32_t length) {
-  const uintptr_t dest_int = reinterpret_cast<const uintptr_t>(dest);
-  const uintptr_t src_int = reinterpret_cast<const uintptr_t>(src);
-
-  // Verify 32-bit alignment.
-  if (!(dest_int & 0x3) && !(src_int & 0x3)) {
-    // Copy in 64-bit increments. Even on 32-bit architectures, the generated code
-    // should still be as efficient as copying in 32-bit increments.
-    // TODO (danielp): Look into using SSE to accelerate. Right now, the marginal
-    // speedup is not worth the extra effort.
-    volatile uint64_t *dest_long = reinterpret_cast<volatile uint64_t *>(dest);
-    const uint64_t *src_long = reinterpret_cast<const uint64_t *>(src);
-
-    while (length >= 8) {
-      *dest_long++ = *src_long++;
-      length -= 8;
-    }
-  }
-
-  volatile uint8_t *dest_byte = reinterpret_cast<volatile uint8_t *>(dest);
-  const uint8_t *src_byte = reinterpret_cast<const uint8_t *>(src);
-
-  // Copy remaining or unaligned bytes.
-  while (length--) {
-    *dest_byte++ = *src_byte++;
-  }
-
-  return dest;
-}
-
-}  // namespace internal
-
 template <class T>
 MpscQueue<T>::MpscQueue()
     : pool_(Pool::GetPool()) {
@@ -114,7 +72,7 @@ void MpscQueue<T>::DoEnqueue(const T &item, bool can_block) {
     DoWriteBlocking(write_at, my_wait_number);
   }
 
-  internal::VolatileCopy(&write_at->value, &item, sizeof(item));
+  mpsc_queue::VolatileCopy(&write_at->value, &item, sizeof(item));
 
   // Only now is it safe to alert readers that we have a new element.
   Fence();

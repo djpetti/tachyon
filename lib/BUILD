@@ -7,7 +7,8 @@ filegroup(
 
 cc_library(
   name = "tachyon",
-  srcs = ["pool.cc", "mutex.cc", "atomics.cc", "constants.cc"],
+  srcs = ["pool.cc", "mutex.cc", "atomics.cc", "constants.cc",
+          "mpsc_queue_internal.cc", "string_specific.cc"],
   hdrs = [":tachyon_hdrs"],
   linkopts = ["-lrt"],
 )

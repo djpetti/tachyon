@@ -9,6 +9,7 @@
 #include "atomics.h"
 #include "constants.h"
 #include "macros.h"
+#include "mpsc_queue_internal.h"
 #include "mutex.h"
 #include "pool.h"
 

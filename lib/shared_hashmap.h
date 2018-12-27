@@ -3,13 +3,13 @@
 
 #include <assert.h>
 #include <stdint.h>
-#include <string.h>
 
 #include <functional>
 #include <string>
 
 #include "mutex.h"
 #include "pool.h"
+#include "string_specific.h"
 
 namespace tachyon {
 

@@ -12,14 +12,14 @@ namespace testing {
 template <class T>
 class MockQueue : public QueueInterface<T> {
  public:
-  MOCK_METHOD1(Enqueue, bool(const T &item));
-  MOCK_METHOD1(EnqueueBlocking, bool(const T &item));
+  MOCK_METHOD1_T(Enqueue, bool(const T &item));
+  MOCK_METHOD1_T(EnqueueBlocking, bool(const T &item));
 
-  MOCK_METHOD1(DequeueNext, bool(T *item));
-  MOCK_METHOD1(DequeueNextBlocking, void(T *item));
+  MOCK_METHOD1_T(DequeueNext, bool(T *item));
+  MOCK_METHOD1_T(DequeueNextBlocking, void(T *item));
 
-  MOCK_METHOD0(GetOffset, int());
-  MOCK_METHOD0(FreeQueue, void());
+  MOCK_METHOD0_T(GetOffset, int());
+  MOCK_METHOD0_T(FreeQueue, void());
 };
 
 }  // namespace testing

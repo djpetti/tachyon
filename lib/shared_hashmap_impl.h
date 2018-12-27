@@ -1,88 +1,6 @@
 // NOTE: This file is not meant to be #included directly. Use shared_hashmap.h
 // instead.
 
-namespace internal {
-
-// Here's a class whose sole purpose is to implement string-specific
-// functionality.
-template <class KeyType, class ConvKeyType>
-class StringSpecific {
- public:
-  // Converts a key, and returns what to set the bucket's Key value as.
-  // Args:
-  //  key: The key we want to set.
-  static ConvKeyType ConvertKey(const KeyType &key) {
-    // If it's trivially copyable, just use our normal key.
-    return key;
-  }
-
-  // Compares two keys.
-  // Args:
-  //  bucket_key: The first key to compare, from the bucket.
-  //  user_key: The second key to compare.
-  // Returns:
-  //  True if the keys are the same, false if they aren't.
-  static bool CompareKeys(const ConvKeyType &bucket_key,
-                          const KeyType &user_key) {
-    return bucket_key == user_key;
-  }
-
-  // Hashes a key.
-  // Args:
-  //  The key to hash.
-  // Returns:
-  //  The hashed key.
-  static ::std::size_t HashKey(const KeyType &key) {
-    return ::std::hash<ConvKeyType>()(key);
-  }
-};
-
-// Explicit specialization of ConvertKey for strings.
-// This works the same way as the normal version, except it properly copies the
-// string into shared memory.
-template <>
-uintptr_t StringSpecific<const char *, uintptr_t>::ConvertKey(
-    const char *const &key) {
-  const int key_length = strlen(key) + 1;  // Include \0.
-
-  Pool *pool = Pool::GetPool();
-  char *shared_key = reinterpret_cast<char *>(pool->Allocate(key_length));
-  assert(shared_key && "Allocating SHM failed unexpectedly.");
-  memcpy(shared_key, key, key_length);
-
-  // Get the offset in the pool.
-  return pool->GetOffset(shared_key);
-}
-
-// Explicit specialization of CompareKeys for strings.
-// This works the same way as the normal version, except that it compares the
-// strings character-by-character instead of merely comparing pointers.
-template <>
-bool StringSpecific<const char *, uintptr_t>::CompareKeys(
-    const uintptr_t &bucket_key, const char *const &user_key) {
-  // Get the actual pointers.
-  Pool *pool = Pool::GetPool();
-  const char *bucket_key_ptr = pool->AtOffset<const char>(bucket_key);
-
-  if (!bucket_key_ptr || !user_key) {
-    // A special case is if one of them is null.
-    return bucket_key_ptr == user_key;
-  }
-
-  return !strcmp(bucket_key_ptr, user_key);
-}
-
-// Explicit specialization of HashKey for strings.
-// std::hash can only work with std::strings, so we need to convert it to one
-// first, otherwise it just hashes the pointer.
-template <>
-::std::size_t StringSpecific<const char *, uintptr_t>::HashKey(
-    const char *const &key) {
-  return ::std::hash<::std::string>()(::std::string(key));
-}
-
-}  // namespace internal
-
 template <class KeyType, class ConvKeyType, class ValueType>
 SharedHashmapInt<KeyType, ConvKeyType, ValueType>::SharedHashmapInt(
     int offset, int num_buckets)
@@ -148,7 +66,7 @@ SharedHashmapInt<KeyType, ConvKeyType, ValueType>::FindBucket(
     const KeyType &key) {
   // First, hash the key.
   ::std::size_t location =
-      internal::StringSpecific<KeyType, ConvKeyType>::HashKey(key);
+      shared_hashmap::StringSpecific<KeyType, ConvKeyType>::HashKey(key);
   // Bound it to our array size.
   location %= num_buckets_;
 
@@ -157,7 +75,7 @@ SharedHashmapInt<KeyType, ConvKeyType, ValueType>::FindBucket(
   while (bucket) {
     if (bucket->occupied) {
       // Something's there already.
-      if (internal::StringSpecific<KeyType, ConvKeyType>::CompareKeys(
+      if (shared_hashmap::StringSpecific<KeyType, ConvKeyType>::CompareKeys(
               bucket->key, key)) {
         // This is the bucket we're looking for. We're done.
         return bucket;
@@ -188,8 +106,8 @@ void SharedHashmapInt<KeyType, ConvKeyType, ValueType>::AddOrSet(
   Bucket *bucket = FindBucket(key);
 
   if (bucket->occupied &&
-      !internal::StringSpecific<KeyType, ConvKeyType>::CompareKeys(bucket->key,
-                                                                   key)) {
+      !shared_hashmap::StringSpecific<KeyType, ConvKeyType>::CompareKeys(
+          bucket->key, key)) {
     // It's not at this position. We have to add a new bucket to the linked
     // list.
     Bucket *new_bucket = pool_->AllocateForType<Bucket>();
@@ -201,7 +119,8 @@ void SharedHashmapInt<KeyType, ConvKeyType, ValueType>::AddOrSet(
   bucket->value = value;
   bucket->occupied = true;
 
-  bucket->key = internal::StringSpecific<KeyType, ConvKeyType>::ConvertKey(key);
+  bucket->key =
+      shared_hashmap::StringSpecific<KeyType, ConvKeyType>::ConvertKey(key);
 
   MutexRelease(lock_);
 }
@@ -213,8 +132,8 @@ bool SharedHashmapInt<KeyType, ConvKeyType, ValueType>::Fetch(
 
   Bucket *bucket = FindBucket(key);
 
-  if (!internal::StringSpecific<KeyType, ConvKeyType>::CompareKeys(bucket->key,
-                                                                   key)) {
+  if (!shared_hashmap::StringSpecific<KeyType, ConvKeyType>::CompareKeys(
+          bucket->key, key)) {
     // It's not there.
     MutexRelease(lock_);
     return false;
