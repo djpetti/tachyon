@@ -18,7 +18,7 @@ class MockQueue : public QueueInterface<T> {
   MOCK_METHOD1_T(DequeueNext, bool(T *item));
   MOCK_METHOD1_T(DequeueNextBlocking, void(T *item));
 
-  MOCK_METHOD0_T(GetOffset, int());
+  MOCK_CONST_METHOD0_T(GetOffset, int());
   MOCK_METHOD0_T(FreeQueue, void());
 };
 
