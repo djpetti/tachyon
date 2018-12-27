@@ -164,6 +164,58 @@ TEST_F(MpscQueueTest, SingleThreadTest) {
   EXPECT_FALSE(queue_.DequeueNext(&on_queue));
 }
 
+// Test that we can use the queue with structs.
+TEST_F(MpscQueueTest, StructTest) {
+  // Struct type for testing.
+  struct TestStruct {
+    int foo;
+    char bar;
+    double baz;
+  };
+
+  // Queue that passes structs.
+  MpscQueue<TestStruct> queue;
+
+  int dequeue_counter = 0;
+  TestStruct on_queue;
+  const TestStruct base_item = {0, 'a', 42.0};
+  for (int i = 0; i < 20; i += 2) {
+    // Here, we'll enqueue two items and deque one.
+    TestStruct item = base_item;
+    item.foo = i;
+
+    EXPECT_TRUE(queue.Enqueue(item));
+    ++item.foo;
+    EXPECT_TRUE(queue.Enqueue(item));
+
+    TestStruct expected = base_item;
+    expected.foo = dequeue_counter++;
+
+    EXPECT_TRUE(queue.DequeueNext(&on_queue));
+
+    // We don't have a good way of reliably comparing structs due to padding, so
+    // we have to compare each member individually.
+    EXPECT_EQ(expected.foo, on_queue.foo);
+    EXPECT_EQ(expected.bar, on_queue.bar);
+    EXPECT_EQ(expected.baz, on_queue.baz);
+  }
+
+  // Now dequeue everything remaining.
+  for (int i = 0; i < 10; ++i) {
+    TestStruct expected = base_item;
+    expected.foo = dequeue_counter++;
+
+    EXPECT_TRUE(queue.DequeueNext(&on_queue));
+
+    EXPECT_EQ(expected.foo, on_queue.foo);
+    EXPECT_EQ(expected.bar, on_queue.bar);
+    EXPECT_EQ(expected.baz, on_queue.baz);
+  }
+
+  // There should be nothing left.
+  EXPECT_FALSE(queue.DequeueNext(&on_queue));
+}
+
 // Test that we can use the queue normally with two threads.
 TEST_F(MpscQueueTest, SpscTest) {
   ::std::thread producer(ProducerThread, &queue_);
