@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -53,7 +54,11 @@ Pool::Pool(int size) {
     created = false;
     fd = shm_open(kShmName, O_RDWR, S_IRUSR | S_IWUSR);
   }
-  assert(fd >= 0 && "shm_open() failed.");
+  if (fd < 0) {
+    // Opening the shared memory failed. We might as well quit now.
+    perror("FATAL (shm_open)");
+    exit(1);
+  }
 
   if (created) {
     BuildNewPool(fd, size);
@@ -77,8 +82,11 @@ void Pool::BuildNewPool(int fd, int size) {
 
   // It turns out we actually have to make it the size we want.
   const int truncate_ret = ftruncate(fd, data_size + header_overhead);
-  assert(truncate_ret >= 0 && "ftruncate() failed.");
-  _UNUSED(truncate_ret);
+  if (truncate_ret < 0) {
+    // Resizing the pool failed.
+    perror("FATAL (ftruncate)");
+    exit(1);
+  }
 
   // Our pool header will start from the very beginning of the pool.
   header_ = reinterpret_cast<PoolHeader *>(pool);
