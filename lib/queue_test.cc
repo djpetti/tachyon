@@ -75,6 +75,12 @@ class QueueTest : public ::testing::Test {
  protected:
   QueueTest() = default;
 
+  virtual void SetUp() {
+    // Remove any old stuff that might be in SHM.
+    Pool *pool = Pool::GetPool();
+    pool->Clear();
+  }
+
   virtual void TearDown() {
     // Free queue SHM.
     queue_.FreeQueue();
