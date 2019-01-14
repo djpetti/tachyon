@@ -86,7 +86,7 @@ class Queue : public QueueInterface<T> {
     // The actual offset.
     volatile int32_t offset;
     // A flag indicating whether this subqueue is currently operational.
-    volatile uint32_t valid __attribute__((aligned(4)));
+    volatile uint32_t valid;
   };
 
   // This is the underlying structure that will be located in shared memory, and
@@ -95,9 +95,8 @@ class Queue : public QueueInterface<T> {
   // the same queue.
   struct RawQueue {
     // How many subqueues we currently have. (We don't necessarily use the whole
-    // array.) The fancy alignment + volatile is because x86 guarantees that
-    // accesses to a 4-byte aligned value will happen atomically.
-    volatile uint32_t num_subqueues __attribute__((aligned(4)));
+    // array.)
+    volatile uint32_t num_subqueues;
     // Offsets of all the subqueues in the pool, so we can easily find them.
     volatile Subqueue queue_offsets[kMaxConsumers];
   };

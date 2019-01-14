@@ -72,13 +72,16 @@ void Queue<T>::AddSubqueue() {
 
 template <class T>
 void Queue<T>::IncorporateNewSubqueues() {
-  // It's okay to look at num_subqueues because we're guaranteed atomic access.
-  // However, we copy it because we don't want it to change during the loop.
-  const uint32_t num_subqueues = queue_->num_subqueues;
+  // We use a sneaky ExchangeAdd here in order to force atomic access of the
+  // num_subqueues variable.
+  const uint32_t num_subqueues = ExchangeAdd(&(queue_->num_subqueues), 0);
+
   if (num_subqueues > last_num_subqueues_) {
     // We have new queues to add.
     for (uint32_t i = last_num_subqueues_; i < num_subqueues; ++i) {
-      if (queue_->queue_offsets[i].valid) {
+      // Another sneaky atomic access for valid...
+      const uint32_t valid = ExchangeAdd(&(queue_->queue_offsets[i].valid), 0);
+      if (valid) {
         const int32_t offset = queue_->queue_offsets[i].offset;
         subqueues_[last_num_subqueues_++] = new MpscQueue<T>(offset);
       }
