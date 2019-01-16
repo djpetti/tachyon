@@ -4,21 +4,26 @@ template <class T>
 Queue<T>::Queue(bool consumer /*= true*/)
     : pool_(Pool::GetPool()) {
   // Allocate the shared memory we need.
-  // TODO (danielp): Add reference counting, so we can free shared memory when
-  // we don't need it.
   queue_ = pool_->AllocateForType<RawQueue>();
   assert(queue_ != nullptr && "Out of shared memory?");
 
   queue_->num_subqueues = 0;
 
-  // Initially, mark everything in the queue_offsets array as invalid.
+  // Allocate the subqueues array.
+  subqueues_ = new MpscQueue<T> *[kMaxConsumers];
+  assert(subqueues_ && "Failed to allocate subqueues.");
+
+  // Initially, mark everything in the queue_offsets array as invalid and dead,
+  // and mark the subqueues as invalid.
   for (int i = 0; i < kMaxConsumers; ++i) {
     queue_->queue_offsets[i].valid = 0;
+    queue_->queue_offsets[i].dead = 1;
+    subqueues_[i] = nullptr;
   }
 
   if (consumer) {
     // We're going to need at least one subqueue to begin with.
-    AddSubqueue();
+    MakeOwnSubqueue();
   }
 }
 
@@ -28,11 +33,20 @@ Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
   // Find the SHM portion of the queue.
   queue_ = pool_->AtOffset<RawQueue>(queue_offset);
 
+  // Allocate the subqueues array.
+  subqueues_ = new MpscQueue<T> *[kMaxConsumers];
+  assert(subqueues_ && "Failed to allocate subqueues.");
+
+  // Mark all the subqueues as nonexistent.
+  for (int i = 0; i < kMaxConsumers; ++i) {
+    subqueues_[i] = nullptr;
+  }
+
   // This is the principal way in which we make get a new "handle" to the same
   // queue, so we're going to need to make another subqueue for us to read off
   // of.
   if (consumer) {
-    AddSubqueue();
+    MakeOwnSubqueue();
   }
   // Populate our array of subqueues.
   IncorporateNewSubqueues();
@@ -40,6 +54,17 @@ Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
 
 template <class T>
 Queue<T>::~Queue() {
+  if (my_subqueue_) {
+    // If this queue is a consumer, the subqueue that was created specifically for
+    // it to read from will never be used again. First, mark it as invalid so
+    // nobody will try to do anything with it again.
+    Exchange(&(queue_->queue_offsets[my_subqueue_index_].valid), 0);
+    Fence();
+
+    // Remove the queue, freeing the SHM if necessary.
+    RemoveSubqueue(my_subqueue_index_);
+  }
+
   // Get rid of subqueues.
   // NOTE: This only deletes the local portion of the queue state. To delete the
   // shared portion, you must call FreeQueue().
@@ -47,27 +72,104 @@ Queue<T>::~Queue() {
   for (uint32_t i = 0; i < num_subqueues; ++i) {
     delete subqueues_[i];
   }
+  // Delete the array.
+  delete[] subqueues_;
 }
 
 template <class T>
-void Queue<T>::AddSubqueue() {
-  // Increment this at the beginning so nobody can write over this spot.
-  const uint32_t queue_index = ExchangeAdd(&(queue_->num_subqueues), 1);
-  Fence();
+void Queue<T>::MakeOwnSubqueue() {
+  // Look for any dead spaces that we can write over.
+  uint32_t queue_index;
+  bool found_dead = false;
+  for (uint32_t i = 0; i < kMaxConsumers; ++i) {
+    // Read the dead flag. If the space is available, grab it now.
+    const bool was_dead =
+        CompareExchange(&(queue_->queue_offsets[i].dead), 1, 0);
+    Fence();
 
-  ++last_num_subqueues_;
+    if (was_dead) {
+      // We can overwrite this space.
+      queue_index = i;
+      found_dead = true;
+      break;
+    }
+  }
+
+  // If there were no new slots available, this constitutes a serious error.
+  assert(found_dead && "Exceeded maximum number of consumers.");
 
   // Create a new queue at that index.
   MpscQueue<T> *new_queue = new MpscQueue<T>();
   subqueues_[queue_index] = new_queue;
   my_subqueue_ = new_queue;
+  my_subqueue_index_ = queue_index;
 
   // Record the offset so we can find it later.
   queue_->queue_offsets[queue_index].offset = new_queue->GetOffset();
+  // Mark that we have one reference.
+  queue_->queue_offsets[queue_index].num_references = 1;
 
   // Only once we're done messing with it can we make it valid.
   Fence();
   Exchange(&(queue_->queue_offsets[queue_index].valid), 1);
+
+  // Mark that we have an additional subqueue.
+  ++last_num_subqueues_;
+  Increment(&(queue_->num_subqueues));
+}
+
+template <class T>
+bool Queue<T>::AddSubqueue(uint32_t index) {
+  // Snapshot the value of the reference counter.
+  const uint32_t references =
+      ExchangeAdd(&(queue_->queue_offsets[index].num_references), 0);
+  Fence();
+
+  if (references == 0) {
+    // The queue was already freed in another thread. Adding it would be
+    // invalid.
+    return false;
+  }
+
+  // Now, try to safely increment the counter.
+  const bool incremented =
+      CompareExchange(&(queue_->queue_offsets[index].num_references), references,
+                      references + 1);
+  Fence();
+  if (!incremented) {
+    // The reference counter didn't have the expected value. It's not safe to
+    // increment.
+    return false;
+  }
+
+  // Go ahead and create the queue.
+  const int32_t offset = queue_->queue_offsets[index].offset;
+  subqueues_[index] = new MpscQueue<T>(offset);
+
+  return true;
+}
+
+template <class T>
+void Queue<T>::RemoveSubqueue(uint32_t index) {
+  // Decrement the reference counter.
+  const uint32_t references =
+      ExchangeAdd(&(queue_->queue_offsets[index].num_references), -1);
+  Fence();
+
+  if (references == 1) {
+    // The reference counter just hit zero, which means we need to free the SHM.
+    subqueues_[index]->FreeQueue();
+    // Decrement the total number of subqueues.
+    Decrement(&(queue_->num_subqueues));
+  }
+
+  // Delete the local portion of the queue.
+  delete subqueues_[index];
+  subqueues_[index] = nullptr;
+
+  // Only now when we're done is it safe to mark this space as reusable.
+  Fence();
+  Exchange(&(queue_->queue_offsets[index].dead), 1);
 }
 
 template <class T>
@@ -76,14 +178,20 @@ void Queue<T>::IncorporateNewSubqueues() {
   // num_subqueues variable.
   const uint32_t num_subqueues = ExchangeAdd(&(queue_->num_subqueues), 0);
 
-  if (num_subqueues > last_num_subqueues_) {
-    // We have new queues to add.
-    for (uint32_t i = last_num_subqueues_; i < num_subqueues; ++i) {
+  if (num_subqueues != last_num_subqueues_) {
+    // We have queues to add or remove.
+    for (uint32_t i = 0; i < kMaxConsumers; ++i) {
       // Another sneaky atomic access for valid...
       const uint32_t valid = ExchangeAdd(&(queue_->queue_offsets[i].valid), 0);
-      if (valid) {
-        const int32_t offset = queue_->queue_offsets[i].offset;
-        subqueues_[last_num_subqueues_++] = new MpscQueue<T>(offset);
+
+      if (valid && !subqueues_[i] && AddSubqueue(i)) {
+        // This subqueue is now valid, but not reflected in our subqueues array.
+        ++last_num_subqueues_;
+      } else if (!valid && subqueues_[i]) {
+        // This subqueue is now invalid, but not reflected in our subqueues
+        // array.
+        RemoveSubqueue(i);
+        --last_num_subqueues_;
       }
     }
   }

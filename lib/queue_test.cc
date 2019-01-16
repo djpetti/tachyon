@@ -75,12 +75,6 @@ class QueueTest : public ::testing::Test {
  protected:
   QueueTest() = default;
 
-  virtual void SetUp() {
-    // Remove any old stuff that might be in SHM.
-    Pool *pool = Pool::GetPool();
-    pool->Clear();
-  }
-
   virtual void TearDown() {
     // Free queue SHM.
     queue_.FreeQueue();
@@ -153,7 +147,7 @@ TEST_F(QueueTest, SingleThreadTest) {
 TEST_F(QueueTest, SpscTest) {
   // Since Queue classes have some local state involved on both the producer and
   // consumer sides, we need to use separate queue instances.
-  Queue<int> queue(false);
+  Queue<int> queue = Queue<int>(false);
   const int queue_offset = queue.GetOffset();
 
   ::std::thread producer(ProducerThread, queue_offset);
@@ -170,8 +164,8 @@ TEST_F(QueueTest, SpscTest) {
 
 // Test that we can use the queue normally with lots of threads.
 TEST_F(QueueTest, MpmcTest) {
-  Queue<int> queue(false);
-  const int queue_offset = queue.GetOffset();
+  Queue<int> *queue = new Queue<int>(false);
+  const int queue_offset = queue->GetOffset();
 
   ::std::thread producers[50];
   ::std::future<int> consumer =
@@ -191,7 +185,8 @@ TEST_F(QueueTest, MpmcTest) {
   }
 
   // Delete the new queue that we created.
-  queue.FreeQueue();
+  queue->FreeQueue();
+  delete queue;
 }
 
 // Test that we can use the queue normally in a single-threaded case with

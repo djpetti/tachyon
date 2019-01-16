@@ -87,6 +87,11 @@ class Queue : public QueueInterface<T> {
     volatile int32_t offset;
     // A flag indicating whether this subqueue is currently operational.
     volatile uint32_t valid;
+    // A flag indicating that this subqueue will never be used again, and can be
+    // overwritten.
+    volatile uint32_t dead;
+    // Number of references to this subqueue that are floating around.
+    volatile uint32_t num_references;
   };
 
   // This is the underlying structure that will be located in shared memory, and
@@ -105,12 +110,25 @@ class Queue : public QueueInterface<T> {
   // we implement fetching queues by name.
   static SharedHashmap<const char *, int> queue_names_;
 
-  // Adds a new subqueue to this queue. This is needed whenever a new consumer
-  // comes along.
-  void AddSubqueue();
+  // If this is a consumer queue, creates that subqueue that it will read from.
+  void MakeOwnSubqueue();
   // Checks for any new existing subqueues that were created by other processes,
   // and adds appropriate entries to our subqueues_ array.
   void IncorporateNewSubqueues();
+
+  // Adds a subqueue that exists in shared memory to this queue.
+  // Args:
+  //  index: The index in the queue_offsets array at which to add an entry for
+  //         it.
+  // Returns:
+  //  True if adding the subqueue succeeded, false otherwise.
+  bool AddSubqueue(uint32_t index);
+  // Removes a subqueue, possibly also deleting it from shared memory if this is
+  // the last remaining reference to it.
+  // Args:
+  //  index: The index in the queue_offsets array at which the queue to remove
+  //         is located.
+  void RemoveSubqueue(uint32_t index);
 
   // Common back-end for FetchQueue and FetchProducerQueue.
   // Args:
@@ -127,9 +145,11 @@ class Queue : public QueueInterface<T> {
 
   // This is the underlying array of MPSC queues that we use to implement this
   // MPMC queue.
-  MpscQueue<T> *subqueues_[kMaxConsumers];
+  MpscQueue<T> **subqueues_;
   // The particular subqueue that we read off of.
   MpscQueue<T> *my_subqueue_ = nullptr;
+  // The index in queue_->queue_offsets of our subqueue.
+  uint32_t my_subqueue_index_;
 };
 
 // Initialize the queue_names_ member.

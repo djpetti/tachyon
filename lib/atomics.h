@@ -5,8 +5,7 @@
 
 namespace tachyon {
 
-// Uses some assembly magic to perform an atomic compare-and-swap operation on
-// a 32-bit int.
+// Performs an atomic compare-and-swap operation on a 32-bit int.
 // Args:
 //  value: The value to check.
 //  old_val: The expected value.
