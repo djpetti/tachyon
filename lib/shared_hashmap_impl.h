@@ -132,7 +132,8 @@ bool SharedHashmapInt<KeyType, ConvKeyType, ValueType>::Fetch(
 
   Bucket *bucket = FindBucket(key);
 
-  if (!shared_hashmap::StringSpecific<KeyType, ConvKeyType>::CompareKeys(
+  if (!bucket->occupied ||
+      !shared_hashmap::StringSpecific<KeyType, ConvKeyType>::CompareKeys(
           bucket->key, key)) {
     // It's not there.
     MutexRelease(lock_);
