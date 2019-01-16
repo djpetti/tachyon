@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "gtest/gtest.h"
 
@@ -84,6 +86,47 @@ TEST_F(PoolTest, MultiBlockAllocationTest) {
   }
 }
 
+// Tests that allocation works in the middle of the pool.
+TEST_F(PoolTest, AllocationMiddleTest) {
+  // Allocate a giant segment of memory.
+  void *first_segment = pool_->Allocate(kBlockSize * 32);
+  ASSERT_NE(nullptr, first_segment);
+
+  // It should place this at the start of the pool.
+  EXPECT_EQ(0U, pool_->GetOffset(first_segment));
+
+  // Allocate some more.
+  void *second_segment = pool_->Allocate(kBlockSize);
+  // It should place this right after the first segment.
+  EXPECT_EQ(32 * kBlockSize, pool_->GetOffset(second_segment));
+
+  // Allocate yet another one.
+  void *third_segment = pool_->Allocate(kBlockSize);
+  // It should place this right after the second one.
+  EXPECT_EQ(33 * kBlockSize, pool_->GetOffset(third_segment));
+
+  // There should be no overlap.
+  void *reference1 = malloc(kBlockSize * 32);
+  void *reference2 = malloc(kBlockSize);
+  void *reference3 = malloc(kBlockSize);
+
+  memset(first_segment, 0, kBlockSize * 32);
+  memset(second_segment, 1, kBlockSize);
+  memset(third_segment, 2, kBlockSize);
+
+  memset(reference1, 0, kBlockSize * 32);
+  memset(reference2, 1, kBlockSize);
+  memset(reference3, 2, kBlockSize);
+
+  EXPECT_EQ(0, memcmp(reference1, first_segment, kBlockSize * 32));
+  EXPECT_EQ(0, memcmp(reference2, second_segment, kBlockSize));
+  EXPECT_EQ(0, memcmp(reference3, third_segment, kBlockSize));
+
+  free(reference1);
+  free(reference2);
+  free(reference3);
+}
+
 // Test that AllocateAt() works.
 TEST_F(PoolTest, PlacementAllocationTest) {
   // Allocate memory at a specific offset.
@@ -95,7 +138,7 @@ TEST_F(PoolTest, PlacementAllocationTest) {
 }
 
 // Tests that placement allocation works with a single block.
-TEST_F(PoolTest, PlacementAllocationSingleBlock) {
+TEST_F(PoolTest, PlacementAllocationSingleBlockTest) {
   // Allocate the blocks around it to give it the maximal chance of failing.
   ASSERT_NE(nullptr, pool_->AllocateAt(0, 1));
   ASSERT_NE(nullptr, pool_->AllocateAt(2 * kBlockSize + 1, 1));
@@ -106,6 +149,23 @@ TEST_F(PoolTest, PlacementAllocationSingleBlock) {
 
   // Make sure it actually put it at the right spot.
   EXPECT_EQ(kBlockSize + 1, pool_->GetOffset(reserved));
+}
+
+// Tests that placement allocation works in the middle of the pool.
+TEST_F(PoolTest, PlacementAllocationMiddleTest) {
+  // Allocate memory at a specific offset.
+  void *reserved = pool_->AllocateAt(33 * kBlockSize, 1);
+  ASSERT_NE(nullptr, reserved);
+
+  // Make sure it actually put it at the right spot.
+  EXPECT_EQ(33 * kBlockSize, pool_->GetOffset(reserved));
+
+  // Now, try allocating something nearby.
+  void *reserved2 = pool_->AllocateAt(34 * kBlockSize, 1);
+  ASSERT_NE(nullptr, reserved2);
+
+  // That should be at the correct spot also.
+  EXPECT_EQ(34 * kBlockSize, pool_->GetOffset(reserved2));
 }
 
 // Make sure normal allocations work around placement allocations.
