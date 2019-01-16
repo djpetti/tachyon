@@ -68,6 +68,8 @@ class Queue : public QueueInterface<T> {
 
   virtual void FreeQueue();
 
+  virtual uint32_t GetNumConsumers() const;
+
   // Fetches a queue with the given name. If the queue does not exist, it
   // creates it. Otherwise, it fetches a new handle to the existing queue.
   // This particular method fetches a queue that can both produce and consume.

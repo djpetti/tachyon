@@ -174,9 +174,7 @@ void Queue<T>::RemoveSubqueue(uint32_t index) {
 
 template <class T>
 void Queue<T>::IncorporateNewSubqueues() {
-  // We use a sneaky ExchangeAdd here in order to force atomic access of the
-  // num_subqueues variable.
-  const uint32_t num_subqueues = ExchangeAdd(&(queue_->num_subqueues), 0);
+  const uint32_t num_subqueues = GetNumConsumers();
 
   if (num_subqueues != last_num_subqueues_) {
     // We have queues to add or remove.
@@ -284,6 +282,13 @@ void Queue<T>::FreeQueue() {
 
   // Now free our underlying shared memory.
   pool_->FreeType<RawQueue>(queue_);
+}
+
+template <class T>
+uint32_t Queue<T>::GetNumConsumers() const {
+  // We use a sneaky ExchangeAdd here in order to force atomic access of the
+  // num_subqueues variable.
+  return ExchangeAdd(&(queue_->num_subqueues), 0);
 }
 
 template <class T>

@@ -1,6 +1,8 @@
 #ifndef TACHYON_LIB_QUEUE_INTERFACE_H_
 #define TACHYON_LIB_QUEUE_INTERFACE_H_
 
+#include <stdint.h>
+
 namespace tachyon {
 
 // Defines a common interface for queue classes.
@@ -47,6 +49,11 @@ class QueueInterface {
   // method carefully, because once called, any futher operations on this
   // queue from any thread or process produce undefined results.
   virtual void FreeQueue() = 0;
+
+  // Gets the number of consumers that are currently associated with this queue.
+  // Returns:
+  //  The current number of consumers.
+  virtual uint32_t GetNumConsumers() const = 0;
 };
 
 }  // namespace tachyon

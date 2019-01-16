@@ -164,12 +164,17 @@ TEST_F(QueueTest, SpscTest) {
 
 // Test that we can use the queue normally with lots of threads.
 TEST_F(QueueTest, MpmcTest) {
-  Queue<int> *queue = new Queue<int>(false);
-  const int queue_offset = queue->GetOffset();
+  Queue<int> queue(false);
+  const int queue_offset = queue.GetOffset();
 
   ::std::thread producers[50];
-  ::std::future<int> consumer =
+  ::std::future<int> consumer1 =
       ::std::async(&ConsumerThread, queue_offset, 50);
+  ::std::future<int> consumer2 =
+      ::std::async(&ConsumerThread, queue_offset, 50);
+
+  // Wait until it has registered both consumers.
+  while (queue.GetNumConsumers() != 2);
 
   // Make 50 producers, all using the same queue.
   for (int i = 0; i < 50; ++i) {
@@ -177,7 +182,8 @@ TEST_F(QueueTest, MpmcTest) {
   }
 
   // Everything should sum to zero.
-  EXPECT_EQ(0, consumer.get());
+  EXPECT_EQ(0, consumer1.get());
+  EXPECT_EQ(0, consumer2.get());
 
   // Join all the producers.
   for (int i = 0; i < 50; ++i) {
@@ -185,8 +191,7 @@ TEST_F(QueueTest, MpmcTest) {
   }
 
   // Delete the new queue that we created.
-  queue->FreeQueue();
-  delete queue;
+  queue.FreeQueue();
 }
 
 // Test that we can use the queue normally in a single-threaded case with
@@ -240,8 +245,13 @@ TEST_F(QueueTest, MpmcBlockingTest) {
   const int queue_offset = queue.GetOffset();
 
   ::std::thread producers[50];
-  ::std::future<int> consumer =
+  ::std::future<int> consumer1 =
       ::std::async(&BlockingConsumerThread, queue_offset, 50);
+  ::std::future<int> consumer2 =
+      ::std::async(&BlockingConsumerThread, queue_offset, 50);
+
+  // Wait until it has registered both consumers.
+  while (queue.GetNumConsumers() != 2);
 
   // Make 50 producers, all using the same queue.
   for (int i = 0; i < 50; ++i) {
@@ -249,7 +259,8 @@ TEST_F(QueueTest, MpmcBlockingTest) {
   }
 
   // Everything should sum to zero.
-  EXPECT_EQ(0, consumer.get());
+  EXPECT_EQ(0, consumer1.get());
+  EXPECT_EQ(0, consumer2.get());
 
   // Join all the producers.
   for (int i = 0; i < 50; ++i) {
