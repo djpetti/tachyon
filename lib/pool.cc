@@ -163,12 +163,12 @@ uint8_t *Pool::Allocate(uint32_t size) {
       if ((block_allocation_[i] & mask) && in_free_segment) {
         // We reached the end of a free segment.
         in_free_segment = false;
+        if (segment_size >= size && segment_size < smallest_size) {
+          // We found a new smallest segment.
+          smallest_size = segment_size;
+          smallest_segment = segment;
+        }
         if (segment_size) {
-          if (segment_size < smallest_size) {
-            // We found a new smallest segment.
-            smallest_size = segment_size;
-            smallest_segment = segment;
-          }
           segment_size = 0;
           set_segment = false;
         }

@@ -127,6 +127,31 @@ TEST_F(PoolTest, AllocationMiddleTest) {
   free(reference3);
 }
 
+// Tests that Allocate() works when there is an issuficiently large free segment
+// preceding an adequate one. This is meant to catch a specific bug that existed
+// in the implementation.
+TEST_F(PoolTest, AllocatePrecedingSmallSegmentTest) {
+  // Allocate two small segments.
+  uint8_t *small_segment1 = pool_->Allocate(1);
+  uint8_t *small_segment2 = pool_->Allocate(1);
+  ASSERT_NE(nullptr, small_segment1);
+  ASSERT_NE(nullptr, small_segment2);
+
+  // It should have allocated them at the right places.
+  ASSERT_EQ(0U, pool_->GetOffset(small_segment1));
+  ASSERT_EQ(kBlockSize, pool_->GetOffset(small_segment2));
+
+  // Delete the first one.
+  pool_->Free(small_segment1, 1);
+
+  // Try allocating a larger block.
+  uint8_t *large_segment = pool_->Allocate(kBlockSize * 2);
+  ASSERT_NE(nullptr, large_segment);
+
+  // It should have allocated this at the end.
+  EXPECT_EQ(2 * kBlockSize, pool_->GetOffset(large_segment));
+}
+
 // Test that AllocateAt() works.
 TEST_F(PoolTest, PlacementAllocationTest) {
   // Allocate memory at a specific offset.
