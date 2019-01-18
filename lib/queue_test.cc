@@ -37,10 +37,12 @@ void BlockingProducerThread(int offset) {
 }
 
 // A queue consumer thread. It just runs in a loop and reads a sequence off the
-// queue. The sequence is verified by checking that it sums to zero.
+// queue.
 // Args:
 //  offset: The SHM offset of the queue to use.
 //  num_producers: The number of producers we have.
+// Returns:
+//  The total that everything it read summed to.
 int ConsumerThread(int offset, int num_producers) {
   Queue<int> queue(offset);
 
@@ -66,6 +68,68 @@ int BlockingConsumerThread(int offset, int num_producers) {
   }
 
   return total;
+}
+
+// Similar in nature to ConsumerThread, but creates a new queue before every
+// read. This is meant to test the system's ability to manage subqueues. Note
+// that this function makes assumptions that only hold with one producer.
+// Args:
+//  offset: The SHM offset of the queue to use.
+//  exit_offset: Offset of an extra queue that indicates when to exit.
+// Returns:
+//  True as long as no numbers were skipped.
+bool ReInitializingConsumerThread(int offset, int exit_offset) {
+  // We use two queues so we can keep at least one of them active at all
+  // times. This forces more interesting paths through the subqueue-management
+  // code.
+  Queue<int> *queue1 = new Queue<int>(offset);
+  Queue<int> *queue2 = new Queue<int>(offset);
+  // Queue for determining when we need to exit, since some of the data from the
+  // producer thread may be lost.
+  Queue<bool> exit_queue(exit_offset);
+
+  int queue1_last = -3001;
+  int queue2_last = -3001;
+  int compare;
+  bool exit = false;
+  bool valid = true;
+  while (!exit) {
+    while (!queue1->DequeueNext(&compare)) {
+      // Check the exit queue.
+      if (exit_queue.DequeueNext(&exit) && exit) {
+        break;
+      }
+    }
+    if (exit) {
+      break;
+    }
+    if (compare <= queue1_last) {
+      // Something's wrong with the queue.
+      valid = false;
+    }
+    queue1_last = compare;
+
+    delete queue1;
+    queue1 = new Queue<int>(offset);
+
+    while (!queue2->DequeueNext(&compare)) {
+      if (exit_queue.DequeueNext(&exit) && exit) {
+        break;
+      }
+    }
+    if (!exit && compare <= queue2_last) {
+      valid = false;
+    }
+    queue2_last = compare;
+
+    delete queue2;
+    queue2 = new Queue<int>(offset);
+  }
+
+  delete queue1;
+  delete queue2;
+
+  return valid;
 }
 
 }  // namespace
@@ -286,6 +350,31 @@ TEST_F(QueueTest, FetchQueueTest) {
   queue2->DequeueNextBlocking(&result2);
   EXPECT_EQ(0, result1);
   EXPECT_EQ(1, result2);
+
+  queue1->FreeQueue();
+  queue2->FreeQueue();
+}
+
+// Stress test for creating and deleting subqueues.
+TEST_F(QueueTest, SubqueueStressTest) {
+  Queue<int> queue(false);
+  const int queue_offset = queue.GetOffset();
+  Queue<bool> exit_queue(false);
+  const int exit_offset = exit_queue.GetOffset();
+
+  ::std::thread producer(ProducerThread, queue_offset);
+  ::std::future<bool> consumer_ret =
+      ::std::async(&ReInitializingConsumerThread, queue_offset, exit_offset);
+
+  // Wait for the producer to finish.
+  producer.join();
+  // Indicate to the consumer that it's time to exit.
+  while (!exit_queue.EnqueueBlocking(true));
+  // Get the return value.
+  EXPECT_TRUE(consumer_ret.get());
+
+  queue.FreeQueue();
+  exit_queue.FreeQueue();
 }
 
 }  // namespace testing

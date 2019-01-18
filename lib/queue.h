@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <vector>
 
 #include "atomics.h"
 #include "constants.h"
@@ -94,6 +95,8 @@ class Queue : public QueueInterface<T> {
     volatile uint32_t dead;
     // Number of references to this subqueue that are floating around.
     volatile uint32_t num_references;
+    // Number of times this structure has been updated.
+    volatile uint32_t num_updates;
   };
 
   // This is the underlying structure that will be located in shared memory, and
@@ -104,6 +107,8 @@ class Queue : public QueueInterface<T> {
     // How many subqueues we currently have. (We don't necessarily use the whole
     // array.)
     volatile uint32_t num_subqueues;
+    // Number of times we've either created or deleted a new subqueue.
+    volatile uint32_t subqueue_updates;
     // Offsets of all the subqueues in the pool, so we can easily find them.
     volatile Subqueue queue_offsets[kMaxConsumers];
   };
@@ -123,7 +128,8 @@ class Queue : public QueueInterface<T> {
   //  index: The index in the queue_offsets array at which to add an entry for
   //         it.
   // Returns:
-  //  True if adding the subqueue succeeded, false otherwise.
+  //  True if adding the subqueue succeeded, false if the queue was deleted in
+  //  another thread and can't be added.
   bool AddSubqueue(uint32_t index);
   // Removes a subqueue, possibly also deleting it from shared memory if this is
   // the last remaining reference to it.
@@ -144,14 +150,22 @@ class Queue : public QueueInterface<T> {
   Pool *pool_;
   // The last value of queue_->num_subqueues we saw.
   uint32_t last_num_subqueues_ = 0;
+  // The last value of queue_->subqueue_updates we saw.
+  uint32_t last_subqueue_updates_ = 0;
 
   // This is the underlying array of MPSC queues that we use to implement this
   // MPMC queue.
   MpscQueue<T> **subqueues_;
+  // Stored update counter for each subqueue.
+  uint32_t *last_per_queue_updates_;
   // The particular subqueue that we read off of.
   MpscQueue<T> *my_subqueue_ = nullptr;
   // The index in queue_->queue_offsets of our subqueue.
   uint32_t my_subqueue_index_;
+
+  // Stores indices of subqueues that are ready to be written to in order to
+  // speed up the enqueue operation.
+  ::std::vector<uint32_t> writable_subqueues_;
 };
 
 // Initialize the queue_names_ member.

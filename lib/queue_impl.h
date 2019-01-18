@@ -8,18 +8,27 @@ Queue<T>::Queue(bool consumer /*= true*/)
   assert(queue_ != nullptr && "Out of shared memory?");
 
   queue_->num_subqueues = 0;
+  queue_->subqueue_updates = 0;
 
   // Allocate the subqueues array.
   subqueues_ = new MpscQueue<T> *[kMaxConsumers];
   assert(subqueues_ && "Failed to allocate subqueues.");
+  // Allocate updates array.
+  last_per_queue_updates_ = new uint32_t[kMaxConsumers];
+  assert(last_per_queue_updates_ && "Failed to allocate queue updates array.");
 
   // Initially, mark everything in the queue_offsets array as invalid and dead,
   // and mark the subqueues as invalid.
   for (int i = 0; i < kMaxConsumers; ++i) {
     queue_->queue_offsets[i].valid = 0;
     queue_->queue_offsets[i].dead = 1;
+    queue_->queue_offsets[i].num_updates = 0;
     subqueues_[i] = nullptr;
   }
+
+  // We'll go ahead and reserve as much space as we could possibly need here to
+  // make the enqueue operation more realtime.
+  writable_subqueues_.reserve(kMaxConsumers);
 
   if (consumer) {
     // We're going to need at least one subqueue to begin with.
@@ -36,11 +45,18 @@ Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
   // Allocate the subqueues array.
   subqueues_ = new MpscQueue<T> *[kMaxConsumers];
   assert(subqueues_ && "Failed to allocate subqueues.");
+  // Allocate updates array.
+  last_per_queue_updates_ = new uint32_t[kMaxConsumers];
+  assert(last_per_queue_updates_ && "Failed to allocate queue updates array.");
 
   // Mark all the subqueues as nonexistent.
   for (int i = 0; i < kMaxConsumers; ++i) {
     subqueues_[i] = nullptr;
   }
+
+  // We'll go ahead and reserve as much space as we could possibly need here to
+  // make the enqueue operation more realtime.
+  writable_subqueues_.reserve(kMaxConsumers);
 
   // This is the principal way in which we make get a new "handle" to the same
   // queue, so we're going to need to make another subqueue for us to read off
@@ -48,8 +64,6 @@ Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
   if (consumer) {
     MakeOwnSubqueue();
   }
-  // Populate our array of subqueues.
-  IncorporateNewSubqueues();
 }
 
 template <class T>
@@ -61,19 +75,26 @@ Queue<T>::~Queue() {
     Exchange(&(queue_->queue_offsets[my_subqueue_index_].valid), 0);
     Fence();
 
-    // Remove the queue, freeing the SHM if necessary.
-    RemoveSubqueue(my_subqueue_index_);
+    // Decrement the total number of subqueues.
+    Decrement(&(queue_->num_subqueues));
+    // Still an increment for the update counters, because this counts as an
+    // update.
+    Increment(&(queue_->queue_offsets[my_subqueue_index_].num_updates));
+    Fence();
+    Increment(&(queue_->subqueue_updates));
   }
 
   // Get rid of subqueues.
-  // NOTE: This only deletes the local portion of the queue state. To delete the
-  // shared portion, you must call FreeQueue().
-  const uint32_t num_subqueues = last_num_subqueues_;
-  for (uint32_t i = 0; i < num_subqueues; ++i) {
-    delete subqueues_[i];
+  for (uint32_t i = 0; i < kMaxConsumers; ++i) {
+    if (subqueues_[i]) {
+      // Delete any subqueues that we're still holding references to.
+      RemoveSubqueue(i);
+    }
   }
   // Delete the array.
   delete[] subqueues_;
+  // Delete updates array.
+  delete[] last_per_queue_updates_;
 }
 
 template <class T>
@@ -108,6 +129,8 @@ void Queue<T>::MakeOwnSubqueue() {
   queue_->queue_offsets[queue_index].offset = new_queue->GetOffset();
   // Mark that we have one reference.
   queue_->queue_offsets[queue_index].num_references = 1;
+  // Increment the update counter.
+  ++last_per_queue_updates_[queue_index];
 
   // Only once we're done messing with it can we make it valid.
   Fence();
@@ -115,32 +138,37 @@ void Queue<T>::MakeOwnSubqueue() {
 
   // Mark that we have an additional subqueue.
   ++last_num_subqueues_;
+  ++last_subqueue_updates_;
+  Fence();
+  Increment(&(queue_->subqueue_updates));
+  Fence();
   Increment(&(queue_->num_subqueues));
 }
 
 template <class T>
 bool Queue<T>::AddSubqueue(uint32_t index) {
-  // Snapshot the value of the reference counter.
-  const uint32_t references =
-      ExchangeAdd(&(queue_->queue_offsets[index].num_references), 0);
-  Fence();
+  bool incremented = false;
+  do {
+    // Snapshot the value of the reference counter.
+    const uint32_t references =
+        ExchangeAdd(&(queue_->queue_offsets[index].num_references), 0);
+    Fence();
 
-  if (references == 0) {
-    // The queue was already freed in another thread. Adding it would be
-    // invalid.
-    return false;
-  }
+    if (references == 0) {
+      // The queue was already freed in another thread. Adding it would be
+      // invalid.
+      return false;
+    }
 
-  // Now, try to safely increment the counter.
-  const bool incremented =
-      CompareExchange(&(queue_->queue_offsets[index].num_references), references,
-                      references + 1);
-  Fence();
-  if (!incremented) {
-    // The reference counter didn't have the expected value. It's not safe to
-    // increment.
-    return false;
-  }
+    // Now, try to safely increment the counter.
+    incremented =
+        CompareExchange(&(queue_->queue_offsets[index].num_references),
+                        references, references + 1);
+    Fence();
+
+    // This might fail if the reference counter does not have the expected
+    // value, in which case it's not safe to increment and we need to try again.
+  } while (!incremented);
 
   // Go ahead and create the queue.
   const int32_t offset = queue_->queue_offsets[index].offset;
@@ -159,24 +187,25 @@ void Queue<T>::RemoveSubqueue(uint32_t index) {
   if (references == 1) {
     // The reference counter just hit zero, which means we need to free the SHM.
     subqueues_[index]->FreeQueue();
-    // Decrement the total number of subqueues.
-    Decrement(&(queue_->num_subqueues));
+
+    // Only now when we're done is it safe to mark this space as reusable.
+    Fence();
+    Exchange(&(queue_->queue_offsets[index].dead), 1);
   }
 
   // Delete the local portion of the queue.
   delete subqueues_[index];
   subqueues_[index] = nullptr;
-
-  // Only now when we're done is it safe to mark this space as reusable.
-  Fence();
-  Exchange(&(queue_->queue_offsets[index].dead), 1);
 }
 
 template <class T>
 void Queue<T>::IncorporateNewSubqueues() {
-  const uint32_t num_subqueues = GetNumConsumers();
+  // We use a sneaky ExchangeAdd here in order to force atomic access of the
+  // num_subqueues variable.
+  const uint32_t subqueue_updates = ExchangeAdd(&(queue_->subqueue_updates), 0);
+  Fence();
 
-  if (num_subqueues != last_num_subqueues_) {
+  if (subqueue_updates != last_subqueue_updates_) {
     // We have queues to add or remove.
     for (uint32_t i = 0; i < kMaxConsumers; ++i) {
       // Another sneaky atomic access for valid...
@@ -192,6 +221,8 @@ void Queue<T>::IncorporateNewSubqueues() {
         --last_num_subqueues_;
       }
     }
+
+    last_subqueue_updates_ = subqueue_updates;
   }
 }
 
@@ -207,22 +238,39 @@ bool Queue<T>::Enqueue(const T &item) {
     return false;
   }
 
+  writable_subqueues_.clear();
+
   // Since the subqueues support multiple producers, we can just write to all of
   // them in a pretty straightforward fashion.
-  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
+  for (uint32_t i = 0; i < kMaxConsumers; ++i) {
+    if (!subqueues_[i]) {
+      // No queue here.
+      continue;
+    }
+
     if (!subqueues_[i]->Reserve()) {
       // If they're not all going to work, we're going to cancel all our
       // reservations, not enqueue anything, and return false.
-      for (uint32_t j = 0; j < i; ++j) {
+      for (auto j : writable_subqueues_) {
         subqueues_[j]->CancelReservation();
       }
       return false;
     }
+
+    writable_subqueues_.push_back(i);
+    if (writable_subqueues_.size() == last_num_subqueues_) {
+      // We've found all the subqueues that exist, so there's no point in
+      // continuing.
+      break;
+    }
   }
+  // It should be impossible for subqueues_ to be modified without our
+  // knowledge.
+  assert(writable_subqueues_.size() == last_num_subqueues_);
 
   // If we get to here, we managed to reserve everything, so we're clear to
   // actually enqueue stuff.
-  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
+  for (auto i : writable_subqueues_) {
     subqueues_[i]->EnqueueAt(item);
   }
 
@@ -243,9 +291,24 @@ bool Queue<T>::EnqueueBlocking(const T &item) {
 
   // Since the subqueues support multiple producers, we can just write to all of
   // them in a pretty straightforward fashion.
-  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
+  uint32_t num_written = 0;
+  for (uint32_t i = 0; i < kMaxConsumers; ++i) {
+    if (!subqueues_[i]) {
+      // No queue here.
+      continue;
+    }
+
     subqueues_[i]->EnqueueBlocking(item);
+
+    if (++num_written == last_num_subqueues_) {
+      // We've found all the subqueues that exist, so there's no point in
+      // continuing.
+      break;
+    }
   }
+  // It should be impossible for subqueues_ to be modified without our
+  // knowledge.
+  assert(num_written == last_num_subqueues_);
 
   return true;
 }
@@ -276,8 +339,10 @@ void Queue<T>::FreeQueue() {
   IncorporateNewSubqueues();
 
   // Free shared memory for the underlying subqueues.
-  for (uint32_t i = 0; i < last_num_subqueues_; ++i) {
-    subqueues_[i]->FreeQueue();
+  for (uint32_t i = 0; i < kMaxConsumers; ++i) {
+    if (subqueues_[i]) {
+      subqueues_[i]->FreeQueue();
+    }
   }
 
   // Now free our underlying shared memory.
