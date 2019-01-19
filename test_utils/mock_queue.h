@@ -1,6 +1,8 @@
 #ifndef TACHYON_TEST_UTILS_MOCK_QUEUE_H_
 #define TACHYON_TEST_UTILS_MOCK_QUEUE_H_
 
+#include <stdint.h>
+
 #include "gmock/gmock.h"
 
 #include "lib/queue_interface.h"
@@ -20,6 +22,8 @@ class MockQueue : public QueueInterface<T> {
 
   MOCK_CONST_METHOD0_T(GetOffset, int());
   MOCK_METHOD0_T(FreeQueue, void());
+
+  MOCK_CONST_METHOD0_T(GetNumConsumers, uint32_t());
 };
 
 }  // namespace testing
