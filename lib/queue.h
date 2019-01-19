@@ -95,8 +95,6 @@ class Queue : public QueueInterface<T> {
     volatile uint32_t dead;
     // Number of references to this subqueue that are floating around.
     volatile uint32_t num_references;
-    // Number of times this structure has been updated.
-    volatile uint32_t num_updates;
   };
 
   // This is the underlying structure that will be located in shared memory, and
@@ -117,6 +115,10 @@ class Queue : public QueueInterface<T> {
   // we implement fetching queues by name.
   static SharedHashmap<const char *, int> queue_names_;
 
+  // Contains common initialization code that initializes the local state.
+  // Args:
+  //  consumer: Whether this queue is a consumer.
+  void InitializeLocalState(bool consumer);
   // If this is a consumer queue, creates that subqueue that it will read from.
   void MakeOwnSubqueue();
   // Checks for any new existing subqueues that were created by other processes,
@@ -156,8 +158,6 @@ class Queue : public QueueInterface<T> {
   // This is the underlying array of MPSC queues that we use to implement this
   // MPMC queue.
   MpscQueue<T> **subqueues_;
-  // Stored update counter for each subqueue.
-  uint32_t *last_per_queue_updates_;
   // The particular subqueue that we read off of.
   MpscQueue<T> *my_subqueue_ = nullptr;
   // The index in queue_->queue_offsets of our subqueue.

@@ -7,33 +7,17 @@ Queue<T>::Queue(bool consumer /*= true*/)
   queue_ = pool_->AllocateForType<RawQueue>();
   assert(queue_ != nullptr && "Out of shared memory?");
 
+  // Initialize the shared state.
   queue_->num_subqueues = 0;
   queue_->subqueue_updates = 0;
 
-  // Allocate the subqueues array.
-  subqueues_ = new MpscQueue<T> *[kMaxConsumers];
-  assert(subqueues_ && "Failed to allocate subqueues.");
-  // Allocate updates array.
-  last_per_queue_updates_ = new uint32_t[kMaxConsumers];
-  assert(last_per_queue_updates_ && "Failed to allocate queue updates array.");
-
-  // Initially, mark everything in the queue_offsets array as invalid and dead,
-  // and mark the subqueues as invalid.
+  // Initially, mark everything in the queue_offsets array as invalid and dead.
   for (int i = 0; i < kMaxConsumers; ++i) {
     queue_->queue_offsets[i].valid = 0;
     queue_->queue_offsets[i].dead = 1;
-    queue_->queue_offsets[i].num_updates = 0;
-    subqueues_[i] = nullptr;
   }
 
-  // We'll go ahead and reserve as much space as we could possibly need here to
-  // make the enqueue operation more realtime.
-  writable_subqueues_.reserve(kMaxConsumers);
-
-  if (consumer) {
-    // We're going to need at least one subqueue to begin with.
-    MakeOwnSubqueue();
-  }
+  InitializeLocalState(consumer);
 }
 
 template <class T>
@@ -42,12 +26,42 @@ Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
   // Find the SHM portion of the queue.
   queue_ = pool_->AtOffset<RawQueue>(queue_offset);
 
+  InitializeLocalState(consumer);
+}
+
+template <class T>
+Queue<T>::~Queue() {
+  if (my_subqueue_) {
+    // If this queue is a consumer, the subqueue that was created specifically for
+    // it to read from will never be used again. First, mark it as invalid so
+    // nobody will try to do anything with it again.
+    Exchange(&(queue_->queue_offsets[my_subqueue_index_].valid), 0);
+    Fence();
+
+    // Decrement the total number of subqueues.
+    Decrement(&(queue_->num_subqueues));
+    // Still an increment for the update counter, because this counts as an
+    // update.
+    Fence();
+    Increment(&(queue_->subqueue_updates));
+  }
+
+  // Get rid of subqueues.
+  for (uint32_t i = 0; i < kMaxConsumers; ++i) {
+    if (subqueues_[i]) {
+      // Delete any subqueues that we're still holding references to.
+      RemoveSubqueue(i);
+    }
+  }
+  // Delete the array.
+  delete[] subqueues_;
+}
+
+template <class T>
+void Queue<T>::InitializeLocalState(bool consumer) {
   // Allocate the subqueues array.
   subqueues_ = new MpscQueue<T> *[kMaxConsumers];
   assert(subqueues_ && "Failed to allocate subqueues.");
-  // Allocate updates array.
-  last_per_queue_updates_ = new uint32_t[kMaxConsumers];
-  assert(last_per_queue_updates_ && "Failed to allocate queue updates array.");
 
   // Mark all the subqueues as nonexistent.
   for (int i = 0; i < kMaxConsumers; ++i) {
@@ -64,37 +78,6 @@ Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
   if (consumer) {
     MakeOwnSubqueue();
   }
-}
-
-template <class T>
-Queue<T>::~Queue() {
-  if (my_subqueue_) {
-    // If this queue is a consumer, the subqueue that was created specifically for
-    // it to read from will never be used again. First, mark it as invalid so
-    // nobody will try to do anything with it again.
-    Exchange(&(queue_->queue_offsets[my_subqueue_index_].valid), 0);
-    Fence();
-
-    // Decrement the total number of subqueues.
-    Decrement(&(queue_->num_subqueues));
-    // Still an increment for the update counters, because this counts as an
-    // update.
-    Increment(&(queue_->queue_offsets[my_subqueue_index_].num_updates));
-    Fence();
-    Increment(&(queue_->subqueue_updates));
-  }
-
-  // Get rid of subqueues.
-  for (uint32_t i = 0; i < kMaxConsumers; ++i) {
-    if (subqueues_[i]) {
-      // Delete any subqueues that we're still holding references to.
-      RemoveSubqueue(i);
-    }
-  }
-  // Delete the array.
-  delete[] subqueues_;
-  // Delete updates array.
-  delete[] last_per_queue_updates_;
 }
 
 template <class T>
@@ -129,8 +112,6 @@ void Queue<T>::MakeOwnSubqueue() {
   queue_->queue_offsets[queue_index].offset = new_queue->GetOffset();
   // Mark that we have one reference.
   queue_->queue_offsets[queue_index].num_references = 1;
-  // Increment the update counter.
-  ++last_per_queue_updates_[queue_index];
 
   // Only once we're done messing with it can we make it valid.
   Fence();
