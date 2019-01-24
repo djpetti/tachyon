@@ -1,4 +1,5 @@
 # Always show test errors.
 test --test_output=errors
 # Enable all warnings.
-build --copt -Wall --copt -Werror --copt -Wunused-but-set-parameter
+build --copt -Wall --copt -Werror --copt -Wunused-but-set-parameter \
+    --copt -std=c++14

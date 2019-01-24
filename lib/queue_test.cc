@@ -211,7 +211,7 @@ TEST_F(QueueTest, SingleThreadTest) {
 TEST_F(QueueTest, SpscTest) {
   // Since Queue classes have some local state involved on both the producer and
   // consumer sides, we need to use separate queue instances.
-  Queue<int> queue = Queue<int>(false);
+  Queue<int> queue(false);
   const int queue_offset = queue.GetOffset();
 
   ::std::thread producer(ProducerThread, queue_offset);

@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include <limits>
+#include <memory>
 
 #include "atomics.h"
 #include "constants.h"
@@ -32,13 +33,14 @@ namespace tachyon {
 template <class T>
 class MpscQueue {
  public:
-  MpscQueue();
-  // A similar contructor that fetches a queue stored at a particular location
-  // in shared memory. Used internally by FetchQueue.
+  // Creates a brand-new queue.
   // Args:
-  //  queue_offset: The byte offset in the shared memory block of the underlying
-  //  RawQueue object.
-  explicit MpscQueue(int queue_offset);
+  //  size: The number of elements that the queue should be able to hold.
+  static ::std::unique_ptr<MpscQueue<T>> Create(uint32_t size);
+  // Loads an existing queue from SHM.
+  // Args:
+  //  offset: The SHM offset of the queue.
+  static ::std::unique_ptr<MpscQueue<T>> Load(uintptr_t offset);
 
   // Allows a user to "reserve" a place in the queue. Using this method will
   // save a space in the queue that nobody can write over, but which also can't
@@ -103,6 +105,11 @@ class MpscQueue {
   void FreeQueue();
 
  private:
+  // The default constructor is private to force users to use the more intuitive
+  // static creation methods. These methods do all the initialization, so,
+  // technically, this constructor creates an object that isn't valid.
+  MpscQueue();
+
   // Represents an item in the queue.
   struct Node {
     // The actual item we want to store.
@@ -143,7 +150,12 @@ class MpscQueue {
   // the same queue.
   struct RawQueue {
     // The underlying array.
-    volatile Node array[kQueueCapacity];
+    volatile Node *array;
+    // Offset of array in the SHM segment.
+    uintptr_t array_offset;
+    // The length of the array.
+    uint32_t array_length;
+
     // Total length of the queue visible to writers. It is aligned specially
     // because we basically use it as a futex in order to implement blocking.
     volatile uint32_t write_length __attribute__((aligned(4)));
@@ -173,6 +185,14 @@ class MpscQueue {
   //  item: Where to write the item that was read from the queue.
   //  read_at: Node that we are reading from.
   void DoDequeue(T *item, volatile Node *read_at);
+  // Creates a new queue.
+  // Args:
+  //  size: The number of elements that the queue should be able to hold.
+  void DoCreate(uint32_t size);
+  // Loads an existing queue.
+  // Args:
+  //  offset: The offset of the shared portion of the queue in SHM.
+  void DoLoad(uintptr_t offset);
 
   // For consumers, we can get away with storing the tail index locally since we
   // only have one.

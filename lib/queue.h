@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <vector>
+#include <utility>
 
 #include "atomics.h"
 #include "constants.h"
@@ -157,7 +158,7 @@ class Queue : public QueueInterface<T> {
 
   // This is the underlying array of MPSC queues that we use to implement this
   // MPMC queue.
-  MpscQueue<T> **subqueues_;
+  ::std::unique_ptr<MpscQueue<T>> *subqueues_;
   // The particular subqueue that we read off of.
   MpscQueue<T> *my_subqueue_ = nullptr;
   // The index in queue_->queue_offsets of our subqueue.

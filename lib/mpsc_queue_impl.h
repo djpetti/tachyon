@@ -1,8 +1,33 @@
-// NOTE: This file is not meant to be #included directly. Use mpsc_queue.h instead.
+// NOTE: This file is not meant to be #included directly. Use mpsc_queue.h
+// instead.
 
 template <class T>
-MpscQueue<T>::MpscQueue()
-    : pool_(Pool::GetPool()) {
+::std::unique_ptr<MpscQueue<T>> MpscQueue<T>::Create(uint32_t size) {
+  // Create a new queue object.
+  MpscQueue<T> *raw_queue = new MpscQueue<T>();
+  auto queue = ::std::unique_ptr<MpscQueue<T>>(raw_queue);
+
+  queue->DoCreate(size);
+
+  return queue;
+}
+
+template <class T>
+::std::unique_ptr<MpscQueue<T>> MpscQueue<T>::Load(uintptr_t offset) {
+  // Create a new queue object.
+  MpscQueue<T> *raw_queue = new MpscQueue<T>();
+  auto queue = ::std::unique_ptr<MpscQueue<T>>(raw_queue);
+
+  queue->DoLoad(offset);
+
+  return queue;
+}
+
+template <class T>
+MpscQueue<T>::MpscQueue() : pool_(Pool::GetPool()) {}
+
+template <class T>
+void MpscQueue<T>::DoCreate(uint32_t size) {
   // Allocate the shared memory we need.
   queue_ = pool_->AllocateForType<RawQueue>();
   assert(queue_ != nullptr && "Out of shared memory?");
@@ -10,17 +35,26 @@ MpscQueue<T>::MpscQueue()
   queue_->write_length = 0;
   queue_->head_index = 0;
 
-  for (int i = 0; i < kQueueCapacity; ++i) {
+  // Allocate the array.
+  Node *array = pool_->AllocateForArray<Node>(size);
+  assert(array != nullptr && "Out of shared memory?");
+  queue_->array = array;
+  queue_->array_offset = pool_->GetOffset(array);
+  queue_->array_length = size;
+
+  // Initialize the nodes.
+  for (uint32_t i = 0; i < size; ++i) {
     queue_->array[i].valid = 0;
     queue_->array[i].write_waiters = 0;
   }
 }
 
 template <class T>
-MpscQueue<T>::MpscQueue(int queue_offset)
-    : pool_(Pool::GetPool()) {
-  // Find the actual queue.
-  queue_ = pool_->AtOffset<RawQueue>(queue_offset);
+void MpscQueue<T>::DoLoad(uintptr_t offset) {
+  // Initialize queue with an existing one.
+  queue_ = pool_->AtOffset<RawQueue>(offset);
+  // Find the array too.
+  queue_->array = pool_->AtOffset<Node>(queue_->array_offset);
 }
 
 template <class T>
@@ -104,7 +138,7 @@ void MpscQueue<T>::DoWriteBlocking(volatile Node *write_at,
   // than the other, so we need to use the inverted logic instead.
   bool inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
   while ((!inverted && woken_counter < my_wait_number) ||
-          (inverted && woken_counter > my_wait_number)) {
+         (inverted && woken_counter > my_wait_number)) {
     FutexWait(&(write_at->write_waiters), write_waiters);
 
     write_waiters = write_at->write_waiters;
@@ -151,7 +185,7 @@ bool MpscQueue<T>::DequeueNext(T *item) {
 template <class T>
 void MpscQueue<T>::DoDequeue(T *item, volatile Node *read_at) {
   // Cast away the volatile, as it's going back into non-shared memory.
-  *item = const_cast<T&>(read_at->value);
+  *item = const_cast<T &>(read_at->value);
 
   ++tail_index_;
   // The ANDing is so we can easily make our indices wrap when they reach the
@@ -207,7 +241,8 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
   if (old_length > kQueueCapacity) {
     // There are people waiting that we need to wake up.
     // Wake all of them up. (One of them will actually continue.)
-    FutexWake(&(read_at->write_waiters), ::std::numeric_limits<uint32_t>::max());
+    FutexWake(&(read_at->write_waiters),
+              ::std::numeric_limits<uint32_t>::max());
   }
 }
 
@@ -218,5 +253,12 @@ int MpscQueue<T>::GetOffset() const {
 
 template <class T>
 void MpscQueue<T>::FreeQueue() {
+  // We just do pointer arithmetic with the freed blocks, so it's okay to cast
+  // away the volatile.
+  Node *array = const_cast<Node *>(queue_->array);
+
+  // Free the array first.
+  pool_->FreeArray<Node>(array, queue_->array_length);
+  // Now free the rest of the queue data.
   pool_->FreeType<RawQueue>(queue_);
 }

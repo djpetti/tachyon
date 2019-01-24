@@ -60,13 +60,8 @@ Queue<T>::~Queue() {
 template <class T>
 void Queue<T>::InitializeLocalState(bool consumer) {
   // Allocate the subqueues array.
-  subqueues_ = new MpscQueue<T> *[kMaxConsumers];
+  subqueues_ = new ::std::unique_ptr<MpscQueue<T>>[kMaxConsumers];
   assert(subqueues_ && "Failed to allocate subqueues.");
-
-  // Mark all the subqueues as nonexistent.
-  for (int i = 0; i < kMaxConsumers; ++i) {
-    subqueues_[i] = nullptr;
-  }
 
   // We'll go ahead and reserve as much space as we could possibly need here to
   // make the enqueue operation more realtime.
@@ -83,7 +78,7 @@ void Queue<T>::InitializeLocalState(bool consumer) {
 template <class T>
 void Queue<T>::MakeOwnSubqueue() {
   // Look for any dead spaces that we can write over.
-  uint32_t queue_index;
+  uint32_t queue_index = kMaxConsumers;
   bool found_dead = false;
   for (uint32_t i = 0; i < kMaxConsumers; ++i) {
     // Read the dead flag. If the space is available, grab it now.
@@ -101,15 +96,16 @@ void Queue<T>::MakeOwnSubqueue() {
 
   // If there were no new slots available, this constitutes a serious error.
   assert(found_dead && "Exceeded maximum number of consumers.");
+  _UNUSED(found_dead);
 
   // Create a new queue at that index.
-  MpscQueue<T> *new_queue = new MpscQueue<T>();
-  subqueues_[queue_index] = new_queue;
-  my_subqueue_ = new_queue;
+  auto new_queue = MpscQueue<T>::Create(kQueueCapacity);
+  subqueues_[queue_index] = ::std::move(new_queue);
+  my_subqueue_ = subqueues_[queue_index].get();
   my_subqueue_index_ = queue_index;
 
   // Record the offset so we can find it later.
-  queue_->queue_offsets[queue_index].offset = new_queue->GetOffset();
+  queue_->queue_offsets[queue_index].offset = my_subqueue_->GetOffset();
   // Mark that we have one reference.
   queue_->queue_offsets[queue_index].num_references = 1;
 
@@ -153,7 +149,7 @@ bool Queue<T>::AddSubqueue(uint32_t index) {
 
   // Go ahead and create the queue.
   const int32_t offset = queue_->queue_offsets[index].offset;
-  subqueues_[index] = new MpscQueue<T>(offset);
+  subqueues_[index] = MpscQueue<T>::Load(offset);
 
   return true;
 }
@@ -175,8 +171,7 @@ void Queue<T>::RemoveSubqueue(uint32_t index) {
   }
 
   // Delete the local portion of the queue.
-  delete subqueues_[index];
-  subqueues_[index] = nullptr;
+  subqueues_[index].reset();
 }
 
 template <class T>
