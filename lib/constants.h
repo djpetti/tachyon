@@ -15,10 +15,8 @@ extern const char *kShmName;
 // an integer multiple of this number.
 constexpr uint32_t kBlockSize = 128;
 
-// How many items we want our queues to be able to hold. This constant
-// designates how many times to << 1 in order to get that number.
-static constexpr int kQueueCapacityShifts = 6; // 64
-static constexpr int kQueueCapacity = 1 << kQueueCapacityShifts;
+// How many items we want our queues to be able to hold.
+static constexpr int kQueueCapacity = 64;
 // Size to use when initializing the underlying pool.
 // TODO (danielp): This will have to be increased eventually for actual tachyon
 // stuff.

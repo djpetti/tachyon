@@ -35,11 +35,16 @@ class MpscQueue {
  public:
   // Creates a brand-new queue.
   // Args:
-  //  size: The number of elements that the queue should be able to hold.
+  //  size: The number of elements that the queue should be able to hold. Must
+  //        be a power of 2.
+  // Returns:
+  //  The queue it created, or nullptr if queue creation failed.
   static ::std::unique_ptr<MpscQueue<T>> Create(uint32_t size);
   // Loads an existing queue from SHM.
   // Args:
   //  offset: The SHM offset of the queue.
+  // Returns:
+  //  The queue it loaded.
   static ::std::unique_ptr<MpscQueue<T>> Load(uintptr_t offset);
 
   // Allows a user to "reserve" a place in the queue. Using this method will
@@ -155,6 +160,8 @@ class MpscQueue {
     uintptr_t array_offset;
     // The length of the array.
     uint32_t array_length;
+    // Log base 2 of array_length.
+    uint8_t array_length_shifts;
 
     // Total length of the queue visible to writers. It is aligned specially
     // because we basically use it as a futex in order to implement blocking.
@@ -188,7 +195,9 @@ class MpscQueue {
   // Creates a new queue.
   // Args:
   //  size: The number of elements that the queue should be able to hold.
-  void DoCreate(uint32_t size);
+  // Returns:
+  //  True if creating the queue succeeded, false otherwise.
+  bool DoCreate(uint32_t size);
   // Loads an existing queue.
   // Args:
   //  offset: The offset of the shared portion of the queue in SHM.

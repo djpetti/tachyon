@@ -1,4 +1,5 @@
 #include <future>
+#include <memory>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -16,23 +17,25 @@ namespace {
 // Args:
 //  offset: The SHM offset of the queue to use.
 void ProducerThread(int offset) {
-  Queue<int> queue(offset, false);
+  auto queue = Queue<int>::Load(false, offset);
 
   for (int i = -3000; i <= 3000; ++i) {
     // We're doing non-blocking tests here, so we basically just spin around
     // until it works.
-    while (!queue.Enqueue(i));
+    while (!queue->Enqueue(i))
+      ;
   }
 }
 
 // Same thing as the above function, but uses blocking writes.
 void BlockingProducerThread(int offset) {
-  Queue<int> queue(offset, false);
+  auto queue = Queue<int>::Load(false, offset);
 
   for (int i = -3000; i <= 3000; ++i) {
     // Sometimes, producer threads will get kicked off before consumer threads.
     // In that case, if it returns false, we just want to spin until it works.
-    while (!queue.EnqueueBlocking(i));
+    while (!queue->EnqueueBlocking(i))
+      ;
   }
 }
 
@@ -44,12 +47,13 @@ void BlockingProducerThread(int offset) {
 // Returns:
 //  The total that everything it read summed to.
 int ConsumerThread(int offset, int num_producers) {
-  Queue<int> queue(offset);
+  auto queue = Queue<int>::Load(true, offset);
 
   int total = 0;
   for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
-    while (!queue.DequeueNext(&compare));
+    while (!queue->DequeueNext(&compare))
+      ;
     total += compare;
   }
 
@@ -58,12 +62,12 @@ int ConsumerThread(int offset, int num_producers) {
 
 // Same thing as the above function, but uses blocking reads.
 int BlockingConsumerThread(int offset, int num_producers) {
-  Queue<int> queue(offset);
+  auto queue = Queue<int>::Load(true, offset);
 
   int total = 0;
   for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
-    queue.DequeueNextBlocking(&compare);
+    queue->DequeueNextBlocking(&compare);
     total += compare;
   }
 
@@ -82,11 +86,11 @@ bool ReInitializingConsumerThread(int offset, int exit_offset) {
   // We use two queues so we can keep at least one of them active at all
   // times. This forces more interesting paths through the subqueue-management
   // code.
-  Queue<int> *queue1 = new Queue<int>(offset);
-  Queue<int> *queue2 = new Queue<int>(offset);
+  auto queue1 = Queue<int>::Load(true, offset);
+  auto queue2 = Queue<int>::Load(true, offset);
   // Queue for determining when we need to exit, since some of the data from the
   // producer thread may be lost.
-  Queue<bool> exit_queue(exit_offset);
+  auto exit_queue = Queue<bool>::Load(true, exit_offset);
 
   int queue1_last = -3001;
   int queue2_last = -3001;
@@ -96,7 +100,7 @@ bool ReInitializingConsumerThread(int offset, int exit_offset) {
   while (!exit) {
     while (!queue1->DequeueNext(&compare)) {
       // Check the exit queue.
-      if (exit_queue.DequeueNext(&exit) && exit) {
+      if (exit_queue->DequeueNext(&exit) && exit) {
         break;
       }
     }
@@ -109,11 +113,10 @@ bool ReInitializingConsumerThread(int offset, int exit_offset) {
     }
     queue1_last = compare;
 
-    delete queue1;
-    queue1 = new Queue<int>(offset);
+    queue1 = Queue<int>::Load(true, offset);
 
     while (!queue2->DequeueNext(&compare)) {
-      if (exit_queue.DequeueNext(&exit) && exit) {
+      if (exit_queue->DequeueNext(&exit) && exit) {
         break;
       }
     }
@@ -122,12 +125,8 @@ bool ReInitializingConsumerThread(int offset, int exit_offset) {
     }
     queue2_last = compare;
 
-    delete queue2;
-    queue2 = new Queue<int>(offset);
+    queue2 = Queue<int>::Load(true, offset);
   }
-
-  delete queue1;
-  delete queue2;
 
   return valid;
 }
@@ -139,9 +138,14 @@ class QueueTest : public ::testing::Test {
  protected:
   QueueTest() = default;
 
+  virtual void SetUp() {
+    // Create a new queue.
+    queue_ = Queue<int>::Create(true, kQueueCapacity);
+  }
+
   virtual void TearDown() {
     // Free queue SHM.
-    queue_.FreeQueue();
+    queue_->FreeQueue();
   }
 
   static void TearDownTestCase() {
@@ -150,36 +154,36 @@ class QueueTest : public ::testing::Test {
   }
 
   // The queue we are testing with.
-  Queue<int> queue_;
+  ::std::unique_ptr<Queue<int>> queue_;
 };
 
 // Test that we can enqueue items properly.
 TEST_F(QueueTest, EnqueueTest) {
   // Fill up the entire queue.
   for (int i = 0; i < kQueueCapacity; ++i) {
-    EXPECT_TRUE(queue_.Enqueue(i));
+    EXPECT_TRUE(queue_->Enqueue(i));
   }
 
   // Now it shouldn't let us do any more.
-  EXPECT_FALSE(queue_.Enqueue(51));
+  EXPECT_FALSE(queue_->Enqueue(51));
 }
 
 // Test that we can dequeue items properly.
 TEST_F(QueueTest, DequeueTest) {
   // Put some items on the queue.
   for (int i = 0; i < 10; ++i) {
-    ASSERT_TRUE(queue_.Enqueue(i));
+    ASSERT_TRUE(queue_->Enqueue(i));
   }
 
   // Try dequeing stuff.
   int on_queue;
   for (int i = 0; i < 10; ++i) {
-    EXPECT_TRUE(queue_.DequeueNext(&on_queue));
+    EXPECT_TRUE(queue_->DequeueNext(&on_queue));
     EXPECT_EQ(on_queue, i);
   }
 
   // There should be nothing else.
-  EXPECT_FALSE(queue_.DequeueNext(&on_queue));
+  EXPECT_FALSE(queue_->DequeueNext(&on_queue));
 }
 
 // Test that we can use the queue normally in a single-threaded case.
@@ -188,31 +192,31 @@ TEST_F(QueueTest, SingleThreadTest) {
   int on_queue;
   for (int i = 0; i < 20; i += 2) {
     // Here, we'll enqueue two items and deque one.
-    EXPECT_TRUE(queue_.Enqueue(i));
-    EXPECT_TRUE(queue_.Enqueue(i + 1));
+    EXPECT_TRUE(queue_->Enqueue(i));
+    EXPECT_TRUE(queue_->Enqueue(i + 1));
 
-    EXPECT_TRUE(queue_.DequeueNext(&on_queue));
+    EXPECT_TRUE(queue_->DequeueNext(&on_queue));
     EXPECT_EQ(dequeue_counter, on_queue);
     ++dequeue_counter;
   }
 
   // Now dequeue everything remaining.
   for (int i = 0; i < 10; ++i) {
-    EXPECT_TRUE(queue_.DequeueNext(&on_queue));
+    EXPECT_TRUE(queue_->DequeueNext(&on_queue));
     EXPECT_EQ(dequeue_counter, on_queue);
     ++dequeue_counter;
   }
 
   // There should be nothing left.
-  EXPECT_FALSE(queue_.DequeueNext(&on_queue));
+  EXPECT_FALSE(queue_->DequeueNext(&on_queue));
 }
 
 // Test that we can use the queue normally with two threads.
 TEST_F(QueueTest, SpscTest) {
   // Since Queue classes have some local state involved on both the producer and
   // consumer sides, we need to use separate queue instances.
-  Queue<int> queue(false);
-  const int queue_offset = queue.GetOffset();
+  auto queue = Queue<int>::Create(false, kQueueCapacity);
+  const int queue_offset = queue->GetOffset();
 
   ::std::thread producer(ProducerThread, queue_offset);
   ::std::future<int> consumer_ret =
@@ -223,13 +227,13 @@ TEST_F(QueueTest, SpscTest) {
   producer.join();
 
   // Delete the new queue that we created.
-  queue.FreeQueue();
+  queue->FreeQueue();
 }
 
 // Test that we can use the queue normally with lots of threads.
 TEST_F(QueueTest, MpmcTest) {
-  Queue<int> queue(false);
-  const int queue_offset = queue.GetOffset();
+  auto queue = Queue<int>::Create(false, kQueueCapacity);
+  const int queue_offset = queue->GetOffset();
 
   ::std::thread producers[50];
   ::std::future<int> consumer1 =
@@ -238,7 +242,8 @@ TEST_F(QueueTest, MpmcTest) {
       ::std::async(&ConsumerThread, queue_offset, 50);
 
   // Wait until it has registered both consumers.
-  while (queue.GetNumConsumers() != 2);
+  while (queue->GetNumConsumers() != 2)
+    ;
 
   // Make 50 producers, all using the same queue.
   for (int i = 0; i < 50; ++i) {
@@ -255,7 +260,7 @@ TEST_F(QueueTest, MpmcTest) {
   }
 
   // Delete the new queue that we created.
-  queue.FreeQueue();
+  queue->FreeQueue();
 }
 
 // Test that we can use the queue normally in a single-threaded case with
@@ -265,31 +270,31 @@ TEST_F(QueueTest, SingleThreadBlockingTest) {
   int on_queue;
   for (int i = 0; i < 20; i += 2) {
     // Here, we'll enqueue two items and deque one.
-    EXPECT_TRUE(queue_.EnqueueBlocking(i));
-    EXPECT_TRUE(queue_.EnqueueBlocking(i + 1));
+    EXPECT_TRUE(queue_->EnqueueBlocking(i));
+    EXPECT_TRUE(queue_->EnqueueBlocking(i + 1));
 
-    queue_.DequeueNextBlocking(&on_queue);
+    queue_->DequeueNextBlocking(&on_queue);
     EXPECT_EQ(dequeue_counter, on_queue);
     ++dequeue_counter;
   }
 
   // Now dequeue everything remaining.
   for (int i = 0; i < 10; ++i) {
-    queue_.DequeueNextBlocking(&on_queue);
+    queue_->DequeueNextBlocking(&on_queue);
     EXPECT_EQ(dequeue_counter, on_queue);
     ++dequeue_counter;
   }
 
   // There should be nothing left.
-  EXPECT_FALSE(queue_.DequeueNext(&on_queue));
+  EXPECT_FALSE(queue_->DequeueNext(&on_queue));
 }
 
 // Test that we can use the queue normally with two threads and blocking.
 TEST_F(QueueTest, SpscBlockingTest) {
   // Since Queue classes have some local state involved on both the producer and
   // consumer sides, we need to use separate queue instances.
-  Queue<int> queue(false);
-  const int queue_offset = queue.GetOffset();
+  auto queue = Queue<int>::Create(false, kQueueCapacity);
+  const int queue_offset = queue->GetOffset();
 
   ::std::thread producer(BlockingProducerThread, queue_offset);
   ::std::future<int> consumer_ret =
@@ -300,13 +305,13 @@ TEST_F(QueueTest, SpscBlockingTest) {
   producer.join();
 
   // Delete the new queue that we created.
-  queue.FreeQueue();
+  queue->FreeQueue();
 }
 
 // Test that we can use the queue normally with lots of threads and blocking.
 TEST_F(QueueTest, MpmcBlockingTest) {
-  Queue<int> queue(false);
-  const int queue_offset = queue.GetOffset();
+  auto queue = Queue<int>::Create(false, kQueueCapacity);
+  const int queue_offset = queue->GetOffset();
 
   ::std::thread producers[50];
   ::std::future<int> consumer1 =
@@ -315,7 +320,8 @@ TEST_F(QueueTest, MpmcBlockingTest) {
       ::std::async(&BlockingConsumerThread, queue_offset, 50);
 
   // Wait until it has registered both consumers.
-  while (queue.GetNumConsumers() != 2);
+  while (queue->GetNumConsumers() != 2)
+    ;
 
   // Make 50 producers, all using the same queue.
   for (int i = 0; i < 50; ++i) {
@@ -332,7 +338,7 @@ TEST_F(QueueTest, MpmcBlockingTest) {
   }
 
   // Delete the new queue that we created.
-  queue.FreeQueue();
+  queue->FreeQueue();
 }
 
 // Tests that fetching queues by name works.
@@ -357,10 +363,10 @@ TEST_F(QueueTest, FetchQueueTest) {
 
 // Stress test for creating and deleting subqueues.
 TEST_F(QueueTest, SubqueueStressTest) {
-  Queue<int> queue(false);
-  const int queue_offset = queue.GetOffset();
-  Queue<bool> exit_queue(false);
-  const int exit_offset = exit_queue.GetOffset();
+  auto queue = Queue<int>::Create(false, kQueueCapacity);
+  const int queue_offset = queue->GetOffset();
+  auto exit_queue = Queue<bool>::Create(false, kQueueCapacity);
+  const int exit_offset = exit_queue->GetOffset();
 
   ::std::thread producer(ProducerThread, queue_offset);
   ::std::future<bool> consumer_ret =
@@ -369,12 +375,13 @@ TEST_F(QueueTest, SubqueueStressTest) {
   // Wait for the producer to finish.
   producer.join();
   // Indicate to the consumer that it's time to exit.
-  while (!exit_queue.EnqueueBlocking(true));
+  while (!exit_queue->EnqueueBlocking(true))
+    ;
   // Get the return value.
   EXPECT_TRUE(consumer_ret.get());
 
-  queue.FreeQueue();
-  exit_queue.FreeQueue();
+  queue->FreeQueue();
+  exit_queue->FreeQueue();
 }
 
 }  // namespace testing

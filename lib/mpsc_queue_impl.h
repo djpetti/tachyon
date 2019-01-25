@@ -7,7 +7,10 @@ template <class T>
   MpscQueue<T> *raw_queue = new MpscQueue<T>();
   auto queue = ::std::unique_ptr<MpscQueue<T>>(raw_queue);
 
-  queue->DoCreate(size);
+  if (!queue->DoCreate(size)) {
+    // Creation failed.
+    queue.reset();
+  }
 
   return queue;
 }
@@ -27,10 +30,13 @@ template <class T>
 MpscQueue<T>::MpscQueue() : pool_(Pool::GetPool()) {}
 
 template <class T>
-void MpscQueue<T>::DoCreate(uint32_t size) {
+bool MpscQueue<T>::DoCreate(uint32_t size) {
   // Allocate the shared memory we need.
   queue_ = pool_->AllocateForType<RawQueue>();
   assert(queue_ != nullptr && "Out of shared memory?");
+  if (!queue_) {
+    return false;
+  }
 
   queue_->write_length = 0;
   queue_->head_index = 0;
@@ -38,15 +44,29 @@ void MpscQueue<T>::DoCreate(uint32_t size) {
   // Allocate the array.
   Node *array = pool_->AllocateForArray<Node>(size);
   assert(array != nullptr && "Out of shared memory?");
+  if (!array) {
+    return false;
+  }
+
   queue_->array = array;
   queue_->array_offset = pool_->GetOffset(array);
   queue_->array_length = size;
+
+  // Calculate the number of shifts.
+  const bool is_power_2 =
+      mpsc_queue::IntLog2(size, &(queue_->array_length_shifts));
+  assert(is_power_2 && "Queue size should be a power of 2.");
+  if (!is_power_2) {
+    return false;
+  }
 
   // Initialize the nodes.
   for (uint32_t i = 0; i < size; ++i) {
     queue_->array[i].valid = 0;
     queue_->array[i].write_waiters = 0;
   }
+
+  return true;
 }
 
 template <class T>
@@ -61,9 +81,9 @@ template <class T>
 bool MpscQueue<T>::Reserve() {
   // Increment the write length now, to keep other writers from writing off the
   // end.
-  const int32_t old_length = ExchangeAdd(&(queue_->write_length), 1);
+  const uint32_t old_length = ExchangeAdd(&(queue_->write_length), 1);
   Fence();
-  if (old_length >= kQueueCapacity) {
+  if (old_length >= queue_->array_length) {
     // The queue is full. Decrement again and return without doing anything.
     Decrement(&(queue_->write_length));
     return false;
@@ -85,8 +105,8 @@ void MpscQueue<T>::DoEnqueue(const T &item, bool can_block) {
   Fence();
   // The ANDing is so we can easily make our indices wrap when they reach the
   // end of the physical array.
-  constexpr uint32_t mask =
-      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
+  const uint32_t mask = ::std::numeric_limits<uint32_t>::max() >>
+                        (32 - queue_->array_length_shifts);
   BitwiseAnd(&(queue_->head_index), mask);
   // Technically, we need to do this for the index we're going to write to as
   // well, in case a bunch of increments got run before their respective
@@ -190,8 +210,8 @@ void MpscQueue<T>::DoDequeue(T *item, volatile Node *read_at) {
   ++tail_index_;
   // The ANDing is so we can easily make our indices wrap when they reach the
   // end of the physical array.
-  constexpr uint32_t mask =
-      ::std::numeric_limits<uint32_t>::max() >> (32 - kQueueCapacityShifts);
+  const uint32_t mask = ::std::numeric_limits<uint32_t>::max() >>
+                        (32 - queue_->array_length_shifts);
   tail_index_ &= mask;
 
   // Increment the woken counter.
@@ -237,8 +257,8 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
 
   // Only now is it safe to alert writers that we have one fewer element.
   Fence();
-  const int32_t old_length = ExchangeAdd(&(queue_->write_length), -1);
-  if (old_length > kQueueCapacity) {
+  const uint32_t old_length = ExchangeAdd(&(queue_->write_length), -1);
+  if (old_length > queue_->array_length) {
     // There are people waiting that we need to wake up.
     // Wake all of them up. (One of them will actually continue.)
     FutexWake(&(read_at->write_waiters),

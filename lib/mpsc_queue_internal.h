@@ -19,6 +19,14 @@ namespace mpsc_queue {
 volatile void *VolatileCopy(volatile void *__restrict__ dest,
                             const void *__restrict__ src, uint32_t length);
 
+// Calculates the integral base-2 log of an integer.
+// Args:
+//  input: The number to calculate the log of.
+//  log: Set to the log of the number.
+// Returns:
+//  True if input was a power of 2, false otherwise.
+bool IntLog2(uint32_t input, uint8_t *log);
+
 }  // namespace mpsc_queue
 }  // namespace tachyon
 

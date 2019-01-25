@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 #include <memory>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "atomics.h"
 #include "constants.h"
@@ -42,23 +42,6 @@ namespace tachyon {
 template <class T>
 class Queue : public QueueInterface<T> {
  public:
-  // Args:
-  //  consumer: By default, items can be read from the queue using this
-  //  instance. If, however, consumer is false, any dequeue operations will
-  //  automatically segfault, or throw an assertion failure in debug mode.
-  //  It is recommended that if this functionality is not needed, consumer
-  //  be set to false, for efficiency's sake, since it stops it from writing
-  //  to the corresponding subqueue. This option can also be used to ensure
-  //  that enqueue operations don't fail because never-read subqueues
-  //  are getting full.
-  explicit Queue(bool consumer = true);
-  // A similar contructor that fetches a queue stored at a particular location
-  // in shared memory. Used internally by FetchQueue.
-  // Args:
-  //  queue_offset: The byte offset in the shared memory block of the underlying
-  //  RawQueue object.
-  //  consumer: See above for explanation.
-  Queue(int queue_offset, bool consumer = true);
   virtual ~Queue();
 
   virtual bool Enqueue(const T &item);
@@ -72,6 +55,23 @@ class Queue : public QueueInterface<T> {
 
   virtual uint32_t GetNumConsumers() const;
 
+  // Manually creates a brand new queue. Normally, FetchQueue() should be used
+  // as it handles queue creation automatically.
+  // Args:
+  //  consumer: Whether this queue allows elements to be consumed. If set to
+  //            false, the Dequeue() methods won't work. This should be done if
+  //            the queue is only used as a producer in order to prevent
+  //            never-read subqueues from getting full and causing things to
+  //            block.
+  //  size: The number of items that the queue will be able to hold.
+  static ::std::unique_ptr<Queue<T>> Create(bool consumer, uint32_t size);
+  // Manually loads an existing queue. Normally, FetchQueue() should be used as
+  // it handles queue loading automatically.
+  // Args:
+  //  consumer: Whether this queue allows elements to be consumed.
+  //  offset: The offset of the queue in SHM.
+  static ::std::unique_ptr<Queue<T>> Load(bool consumer, uintptr_t offset);
+
   // Fetches a queue with the given name. If the queue does not exist, it
   // creates it. Otherwise, it fetches a new handle to the existing queue.
   // This particular method fetches a queue that can both produce and consume.
@@ -83,6 +83,15 @@ class Queue : public QueueInterface<T> {
   // Same as the method above, but the queue that it fetches can only be used as
   // a producer.
   static ::std::unique_ptr<Queue<T>> FetchProducerQueue(const char *name);
+
+  // These methods are the same as the above two, except they allow us to fetch
+  // a queue that is of a non-default size. Note that the size parameter is only
+  // used if the queue is created, otherwise it will be ignored. The size
+  // parameter must also be a power of 2.
+  static ::std::unique_ptr<Queue<T>> FetchSizedQueue(const char *name,
+                                                     uint32_t size);
+  static ::std::unique_ptr<Queue<T>> FetchSizedProducerQueue(const char *name,
+                                                             uint32_t size);
 
  private:
   // Represents a single item in the queue_offsets list.
@@ -106,6 +115,10 @@ class Queue : public QueueInterface<T> {
     // How many subqueues we currently have. (We don't necessarily use the whole
     // array.)
     volatile uint32_t num_subqueues;
+    // The number of items that can be held in each subqueue. This is not
+    // volatile, because it is set once when the queue is created, and then
+    // never modified.
+    uint32_t subqueue_size;
     // Number of times we've either created or deleted a new subqueue.
     volatile uint32_t subqueue_updates;
     // Offsets of all the subqueues in the pool, so we can easily find them.
@@ -115,6 +128,22 @@ class Queue : public QueueInterface<T> {
   // A hashmap that's in charge of mapping queue names to offsets. This is how
   // we implement fetching queues by name.
   static SharedHashmap<const char *, int> queue_names_;
+
+  // Default constructor is private because it shouldn't be used. It creates an
+  // improperly-initialized queue. Used Create(), Load(), or one of the Fetch()
+  // methods instead.
+  Queue();
+
+  // Initializes a queue that has been newly created.
+  // Args:
+  //  consumer: Whether the queue is a consumer.
+  //  size: The number of elements that the queue will be able to hold.
+  void DoCreate(bool consumer, uint32_t size);
+  // Initializes a queue that has been loaded from an existing one.
+  // Args:
+  //  consumer: Whether the queue is a consumer.
+  //  queue_offset: The offset of the queue in SHM.
+  void DoLoad(bool consumer, uintptr_t queue_offset);
 
   // Contains common initialization code that initializes the local state.
   // Args:
@@ -145,8 +174,10 @@ class Queue : public QueueInterface<T> {
   // Args:
   //  name: The name of the queue to fetch.
   //  consumer: Whether or not the queue should be a consumer queue.
+  //  size: The number of elements that the queue will be able to hold, if a new
+  //        queue is created. Otherwise, it is ignored.
   static ::std::unique_ptr<Queue<T>> DoFetchQueue(const char *name,
-                                                  bool consumer);
+                                                  bool consumer, uint32_t size);
 
   RawQueue *queue_;
   // This is the shared memory pool that we will use to construct queue objects.

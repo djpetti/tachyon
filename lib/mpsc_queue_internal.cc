@@ -10,10 +10,10 @@ volatile void *VolatileCopy(volatile void *__restrict__ dest,
 
   // Verify 32-bit alignment.
   if (!(dest_int & 0x3) && !(src_int & 0x3)) {
-    // Copy in 64-bit increments. Even on 32-bit architectures, the generated code
-    // should still be as efficient as copying in 32-bit increments.
-    // TODO (danielp): Look into using SSE to accelerate. Right now, the marginal
-    // speedup is not worth the extra effort.
+    // Copy in 64-bit increments. Even on 32-bit architectures, the generated
+    // code should still be as efficient as copying in 32-bit increments.
+    // TODO (danielp): Look into using SSE to accelerate. Right now, the
+    // marginal speedup is not worth the extra effort.
     volatile uint64_t *dest_long = reinterpret_cast<volatile uint64_t *>(dest);
     const uint64_t *src_long = reinterpret_cast<const uint64_t *>(src);
 
@@ -32,6 +32,18 @@ volatile void *VolatileCopy(volatile void *__restrict__ dest,
   }
 
   return dest;
+}
+
+bool IntLog2(uint32_t input, uint8_t *log) {
+  for (*log = 0; *log < 32; ++(*log)) {
+    if (input & 0x1) {
+      break;
+    }
+    input >>= 1;
+  }
+
+  // If input was a power of two, it should now be 0.
+  return input == 1;
 }
 
 }  // namespace mpsc_queue

@@ -1,40 +1,14 @@
 // NOTE: This file is not meant to be #included directly. Use queue.h instead.
 
 template <class T>
-Queue<T>::Queue(bool consumer /*= true*/)
-    : pool_(Pool::GetPool()) {
-  // Allocate the shared memory we need.
-  queue_ = pool_->AllocateForType<RawQueue>();
-  assert(queue_ != nullptr && "Out of shared memory?");
-
-  // Initialize the shared state.
-  queue_->num_subqueues = 0;
-  queue_->subqueue_updates = 0;
-
-  // Initially, mark everything in the queue_offsets array as invalid and dead.
-  for (int i = 0; i < kMaxConsumers; ++i) {
-    queue_->queue_offsets[i].valid = 0;
-    queue_->queue_offsets[i].dead = 1;
-  }
-
-  InitializeLocalState(consumer);
-}
-
-template <class T>
-Queue<T>::Queue(int queue_offset, bool consumer /*= true*/)
-    : pool_(Pool::GetPool()) {
-  // Find the SHM portion of the queue.
-  queue_ = pool_->AtOffset<RawQueue>(queue_offset);
-
-  InitializeLocalState(consumer);
-}
+Queue<T>::Queue() : pool_(Pool::GetPool()) {}
 
 template <class T>
 Queue<T>::~Queue() {
   if (my_subqueue_) {
-    // If this queue is a consumer, the subqueue that was created specifically for
-    // it to read from will never be used again. First, mark it as invalid so
-    // nobody will try to do anything with it again.
+    // If this queue is a consumer, the subqueue that was created specifically
+    // for it to read from will never be used again. First, mark it as invalid
+    // so nobody will try to do anything with it again.
     Exchange(&(queue_->queue_offsets[my_subqueue_index_].valid), 0);
     Fence();
 
@@ -55,6 +29,34 @@ Queue<T>::~Queue() {
   }
   // Delete the array.
   delete[] subqueues_;
+}
+
+template <class T>
+void Queue<T>::DoCreate(bool consumer, uint32_t size) {
+  // Allocate the shared memory we need.
+  queue_ = pool_->AllocateForType<RawQueue>();
+  assert(queue_ != nullptr && "Out of shared memory?");
+
+  // Initialize the shared state.
+  queue_->num_subqueues = 0;
+  queue_->subqueue_size = size;
+  queue_->subqueue_updates = 0;
+
+  // Initially, mark everything in the queue_offsets array as invalid and dead.
+  for (int i = 0; i < kMaxConsumers; ++i) {
+    queue_->queue_offsets[i].valid = 0;
+    queue_->queue_offsets[i].dead = 1;
+  }
+
+  InitializeLocalState(consumer);
+}
+
+template <class T>
+void Queue<T>::DoLoad(bool consumer, uintptr_t queue_offset) {
+  // Find the SHM portion of the queue.
+  queue_ = pool_->AtOffset<RawQueue>(queue_offset);
+
+  InitializeLocalState(consumer);
 }
 
 template <class T>
@@ -99,7 +101,8 @@ void Queue<T>::MakeOwnSubqueue() {
   _UNUSED(found_dead);
 
   // Create a new queue at that index.
-  auto new_queue = MpscQueue<T>::Create(kQueueCapacity);
+  auto new_queue = MpscQueue<T>::Create(queue_->subqueue_size);
+  // TODO (danielp): Error handling for case when queue creation fails.
   subqueues_[queue_index] = ::std::move(new_queue);
   my_subqueue_ = subqueues_[queue_index].get();
   my_subqueue_index_ = queue_index;
@@ -334,29 +337,65 @@ uint32_t Queue<T>::GetNumConsumers() const {
 
 template <class T>
 ::std::unique_ptr<Queue<T>> Queue<T>::DoFetchQueue(const char *name,
-                                                   bool consumer) {
+                                                   bool consumer,
+                                                   uint32_t size) {
   // First, see if a queue exists.
   int offset;
   if (queue_names_.Fetch(name, &offset)) {
     // We have a queue, so just make a new handle to it.
-    Queue<T> *queue_handle = new Queue(offset, consumer);
-    return ::std::unique_ptr<Queue<T>>(queue_handle);
+    return Queue<T>::Load(consumer, offset);
   }
 
   // Create a new queue.
-  Queue<T> *queue_handle = new Queue(consumer);
+  auto queue_handle = Queue<T>::Create(consumer, size);
   // Save the offset.
   queue_names_.AddOrSet(name, queue_handle->GetOffset());
 
-  return ::std::unique_ptr<Queue<T>>(queue_handle);
+  return queue_handle;
+}
+
+template <class T>
+::std::unique_ptr<Queue<T>> Queue<T>::Create(bool consumer, uint32_t size) {
+  // Create new queue.
+  Queue<T> *raw_queue = new Queue<T>();
+  auto queue = ::std::unique_ptr<Queue<T>>(raw_queue);
+
+  queue->DoCreate(consumer, size);
+
+  return queue;
+}
+
+template <class T>
+::std::unique_ptr<Queue<T>> Queue<T>::Load(bool consumer, uintptr_t offset) {
+  // Create new queue.
+  Queue<T> *raw_queue = new Queue<T>();
+  auto queue = ::std::unique_ptr<Queue<T>>(raw_queue);
+
+  queue->DoLoad(consumer, offset);
+
+  return queue;
 }
 
 template <class T>
 ::std::unique_ptr<Queue<T>> Queue<T>::FetchQueue(const char *name) {
-  return DoFetchQueue(name, true);
+  // Use default size.
+  return DoFetchQueue(name, true, kQueueCapacity);
 }
 
 template <class T>
 ::std::unique_ptr<Queue<T>> Queue<T>::FetchProducerQueue(const char *name) {
-  return DoFetchQueue(name, false);
+  return DoFetchQueue(name, false, kQueueCapacity);
+}
+
+template <class T>
+::std::unique_ptr<Queue<T>> Queue<T>::FetchSizedQueue(const char *name,
+                                                      uint32_t size) {
+  // Use default size.
+  return DoFetchQueue(name, true, size);
+}
+
+template <class T>
+::std::unique_ptr<Queue<T>> Queue<T>::FetchSizedProducerQueue(const char *name,
+                                                              uint32_t size) {
+  return DoFetchQueue(name, false, size);
 }
