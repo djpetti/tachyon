@@ -202,10 +202,16 @@ class MpscQueue {
   // Args:
   //  offset: The offset of the shared portion of the queue in SHM.
   void DoLoad(uintptr_t offset);
+  // Encapsulates initialization that is common to both queue creation and
+  // loading.
+  void InitCommon();
 
   // For consumers, we can get away with storing the tail index locally since we
   // only have one.
   uint32_t tail_index_ = 0;
+  // The bitmask to use for wrapping indices. This never changes, so it's safe
+  // to set it just once.
+  uint32_t wrapping_mask_;
 
   RawQueue *queue_;
   // This is the shared memory pool that we will use to construct queue objects.

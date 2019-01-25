@@ -4,8 +4,8 @@
 #include <gtest/gtest.h>
 
 #include "constants.h"
-#include "pool.h"
 #include "mpsc_queue.h"
+#include "pool.h"
 
 namespace tachyon {
 namespace testing {
@@ -19,7 +19,8 @@ void ProducerThread(MpscQueue<int> *queue) {
   for (int i = -3000; i <= 3000; ++i) {
     // We're doing non-blocking tests here, so we basically just spin around
     // until it works.
-    while (!queue->Enqueue(i));
+    while (!queue->Enqueue(i))
+      ;
   }
 }
 
@@ -37,7 +38,8 @@ void AlternatingProducerThread(MpscQueue<int> *queue) {
     if (i % 2) {
       queue->EnqueueBlocking(i);
     } else {
-      while (!queue->Enqueue(i));
+      while (!queue->Enqueue(i))
+        ;
     }
   }
 }
@@ -53,7 +55,8 @@ int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
   for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
-    while (!queue->DequeueNext(&compare));
+    while (!queue->DequeueNext(&compare))
+      ;
     total += compare;
   }
 
@@ -81,7 +84,8 @@ int AlternatingConsumerThread(MpscQueue<int> *queue, int num_producers) {
     if (i % 2) {
       queue->DequeueNextBlocking(&compare);
     } else {
-      while (!queue->DequeueNext(&compare));
+      while (!queue->DequeueNext(&compare))
+        ;
     }
     total += compare;
   }
@@ -314,6 +318,74 @@ TEST_F(MpscQueueTest, BlockingAndNonBlockingTest) {
   ::std::thread producer(AlternatingProducerThread, queue_.get());
   ::std::future<int> consumer_ret =
       ::std::async(&AlternatingConsumerThread, queue_.get(), 1);
+
+  // Wait for them both to finish.
+  EXPECT_EQ(0, consumer_ret.get());
+  producer.join();
+}
+
+// Tests that basic operations work with a smaller queue.
+TEST_F(MpscQueueTest, SmallQueueSingleThreadTest) {
+  // Create a new queue with a smaller size.
+  auto queue = MpscQueue<int>::Create(1);
+
+  int on_queue;
+  for (int i = 0; i < 20; ++i) {
+    // It should let us enqueue one, but not the second one.
+    EXPECT_TRUE(queue->Enqueue(i));
+    EXPECT_FALSE(queue->Enqueue(i + 1));
+
+    EXPECT_TRUE(queue->DequeueNext(&on_queue));
+    EXPECT_EQ(i, on_queue);
+  }
+
+  // There should be nothing left.
+  EXPECT_FALSE(queue->DequeueNext(&on_queue));
+
+  queue->FreeQueue();
+}
+
+// Test that we can use a small queue normally with two threads.
+TEST_F(MpscQueueTest, SmallQueueSpscTest) {
+  // Create a new queue with a smaller size.
+  auto queue = MpscQueue<int>::Create(1);
+
+  ::std::thread producer(ProducerThread, queue.get());
+  ::std::future<int> consumer_ret =
+      ::std::async(&ConsumerThread, queue.get(), 1);
+
+  // Wait for them both to finish.
+  EXPECT_EQ(0, consumer_ret.get());
+  producer.join();
+}
+
+// Tests that basic blocking operations work with a smaller queue.
+TEST_F(MpscQueueTest, SmallQueueSingleThreadBlockingTest) {
+  // Create a new queue with a smaller size.
+  auto queue = MpscQueue<int>::Create(1);
+
+  int on_queue;
+  for (int i = 0; i < 20; ++i) {
+    queue->EnqueueBlocking(i);
+    queue->DequeueNextBlocking(&on_queue);
+    EXPECT_EQ(i, on_queue);
+  }
+
+  // There should be nothing left.
+  EXPECT_FALSE(queue->DequeueNext(&on_queue));
+
+  queue->FreeQueue();
+}
+
+// Test that we can use a small queue normally with two threads and blocking
+// operations.
+TEST_F(MpscQueueTest, SmallQueueSpscBlockingTest) {
+  // Create a new queue with a smaller size.
+  auto queue = MpscQueue<int>::Create(1);
+
+  ::std::thread producer(BlockingProducerThread, queue.get());
+  ::std::future<int> consumer_ret =
+      ::std::async(&BlockingConsumerThread, queue.get(), 1);
 
   // Wait for them both to finish.
   EXPECT_EQ(0, consumer_ret.get());

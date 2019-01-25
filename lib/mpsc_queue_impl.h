@@ -66,6 +66,8 @@ bool MpscQueue<T>::DoCreate(uint32_t size) {
     queue_->array[i].write_waiters = 0;
   }
 
+  InitCommon();
+
   return true;
 }
 
@@ -75,6 +77,22 @@ void MpscQueue<T>::DoLoad(uintptr_t offset) {
   queue_ = pool_->AtOffset<RawQueue>(offset);
   // Find the array too.
   queue_->array = pool_->AtOffset<Node>(queue_->array_offset);
+
+  InitCommon();
+}
+
+template <class T>
+void MpscQueue<T>::InitCommon() {
+  // Generate the index mask value. We can AND this with our indices as an easy
+  // way to make them wrap when they reach the end of the physical array.
+  if (queue_->array_length_shifts == 0) {
+    // Technically, shifting by 32 bits is undefined in C++, so we have to
+    // handle this case manually.
+    wrapping_mask_ = 0;
+  } else {
+    wrapping_mask_ = ::std::numeric_limits<uint32_t>::max() >>
+                     (32 - queue_->array_length_shifts);
+  }
 }
 
 template <class T>
@@ -103,15 +121,12 @@ void MpscQueue<T>::DoEnqueue(const T &item, bool can_block) {
   // space.
   int32_t old_head = ExchangeAdd(&(queue_->head_index), 1);
   Fence();
-  // The ANDing is so we can easily make our indices wrap when they reach the
-  // end of the physical array.
-  const uint32_t mask = ::std::numeric_limits<uint32_t>::max() >>
-                        (32 - queue_->array_length_shifts);
-  BitwiseAnd(&(queue_->head_index), mask);
+  // Wrap the index.
+  BitwiseAnd(&(queue_->head_index), wrapping_mask_);
   // Technically, we need to do this for the index we're going to write to as
   // well, in case a bunch of increments got run before their respective
   // ANDings.
-  old_head &= mask;
+  old_head &= wrapping_mask_;
 
   volatile Node *write_at = queue_->array + old_head;
 
@@ -208,11 +223,8 @@ void MpscQueue<T>::DoDequeue(T *item, volatile Node *read_at) {
   *item = const_cast<T &>(read_at->value);
 
   ++tail_index_;
-  // The ANDing is so we can easily make our indices wrap when they reach the
-  // end of the physical array.
-  const uint32_t mask = ::std::numeric_limits<uint32_t>::max() >>
-                        (32 - queue_->array_length_shifts);
-  tail_index_ &= mask;
+  // Wrap the index.
+  tail_index_ &= wrapping_mask_;
 
   // Increment the woken counter.
   volatile uint16_t *woken_counter =

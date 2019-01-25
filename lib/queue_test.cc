@@ -361,6 +361,31 @@ TEST_F(QueueTest, FetchQueueTest) {
   queue2->FreeQueue();
 }
 
+// Tests that fetching queues with names and sizes works.
+TEST_F(QueueTest, FetchSizedQueueTest) {
+  // TODO (danielp): Create method for clearing hashmap, so we don't have to use
+  // different queue names for each test.
+  auto queue1 = Queue<int>::FetchSizedQueue("test_queue3", 1);
+  queue1->EnqueueBlocking(0);
+  // The queue should be full after this.
+  EXPECT_FALSE(queue1->Enqueue(2));
+
+  auto queue2 = Queue<int>::FetchSizedQueue("test_queue4", 1);
+  queue2->EnqueueBlocking(1);
+  EXPECT_FALSE(queue2->Enqueue(2));
+
+  // Now, it should have given us different queues, so we should be able to read
+  // off the correct numbers.
+  int result1, result2;
+  queue1->DequeueNextBlocking(&result1);
+  queue2->DequeueNextBlocking(&result2);
+  EXPECT_EQ(0, result1);
+  EXPECT_EQ(1, result2);
+
+  queue1->FreeQueue();
+  queue2->FreeQueue();
+}
+
 // Stress test for creating and deleting subqueues.
 TEST_F(QueueTest, SubqueueStressTest) {
   auto queue = Queue<int>::Create(false, kQueueCapacity);
