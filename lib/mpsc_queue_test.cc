@@ -63,12 +63,50 @@ int ConsumerThread(MpscQueue<int> *queue, int num_producers) {
   return total;
 }
 
+// Does the same thing as ConsumerThread, but peeks each item before dequeueing
+// it.
+int PeekingConsumerThread(MpscQueue<int> *queue, int num_producers) {
+  int total = 0;
+  for (int i = 0; i < 6001 * num_producers; ++i) {
+    int compare;
+    while (!queue->PeekNext(&compare));
+    total += compare;
+
+    // If it had something to peek, dequeuing should automatically succeed.
+    if (!queue->DequeueNext(&compare)) {
+      return -1;
+    }
+    total += compare;
+  }
+
+  return total;
+}
+
 // Does the exact same thing as the function above, but uses blocking.
 int BlockingConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
   for (int i = 0; i < 12001 * num_producers; ++i) {
     int compare;
     queue->DequeueNextBlocking(&compare);
+    total += compare;
+  }
+
+  return total;
+}
+
+// Does the same thing as BlockingConsumerThread, but peeks each item before
+// dequeueing it.
+int BlockingPeekingConsumerThread(MpscQueue<int> *queue, int num_producers) {
+  int total = 0;
+  for (int i = 0; i < 6001 * num_producers; ++i) {
+    int compare;
+    queue->PeekNextBlocking(&compare);
+    total += compare;
+
+    // If it had something to peek, dequeuing should automatically succeed.
+    if (!queue->DequeueNext(&compare)) {
+      return -1;
+    }
     total += compare;
   }
 
@@ -390,6 +428,95 @@ TEST_F(MpscQueueTest, SmallQueueSpscBlockingTest) {
   // Wait for them both to finish.
   EXPECT_EQ(0, consumer_ret.get());
   producer.join();
+}
+
+// Tests that Peek() operations work under the most basic of circumstances.
+TEST_F(MpscQueueTest, SingleThreadPeekTest) {
+  int on_queue;
+  for (int i = 0; i < 20; ++i) {
+    // Enqueue an item.
+    EXPECT_TRUE(queue_->Enqueue(i));
+
+    // Peek the item.
+    EXPECT_TRUE(queue_->PeekNext(&on_queue));
+    EXPECT_EQ(i, on_queue);
+    // It should peek the same one again.
+    EXPECT_TRUE(queue_->PeekNext(&on_queue));
+    EXPECT_EQ(i, on_queue);
+
+    // Dequeue the item.
+    EXPECT_TRUE(queue_->DequeueNext(&on_queue));
+    EXPECT_EQ(i, on_queue);
+  }
+
+  // There should be nothing left.
+  EXPECT_FALSE(queue_->DequeueNext(&on_queue));
+}
+
+// Tests that Peek() operations work with multiple threads.
+TEST_F(MpscQueueTest, MpscPeekTest) {
+  // We only use 2 producers here for speed.
+  ::std::thread producers[2];
+  ::std::future<int> consumer =
+      ::std::async(&PeekingConsumerThread, queue_.get(), 2);
+
+  // Make 2 producers, both using the same queue.
+  for (int i = 0; i < 2; ++i) {
+    producers[i] = ::std::thread(ProducerThread, queue_.get());
+  }
+
+  // Everything should sum to zero.
+  EXPECT_EQ(0, consumer.get());
+
+  // Join all the producers.
+  for (int i = 0; i < 2; ++i) {
+    producers[i].join();
+  }
+}
+
+// Tests that blocking Peek() operations work under the most basic of
+// circumstances.
+TEST_F(MpscQueueTest, SingleThreadBlockingPeekTest) {
+  int on_queue;
+  for (int i = 0; i < 20; ++i) {
+    // Enqueue an item.
+    EXPECT_TRUE(queue_->Enqueue(i));
+
+    // Peek the item.
+    queue_->PeekNextBlocking(&on_queue);
+    EXPECT_EQ(i, on_queue);
+    // It should peek the same one again.
+    queue_->PeekNextBlocking(&on_queue);
+    EXPECT_EQ(i, on_queue);
+
+    // Dequeue the item.
+    EXPECT_TRUE(queue_->DequeueNext(&on_queue));
+    EXPECT_EQ(i, on_queue);
+  }
+
+  // There should be nothing left.
+  EXPECT_FALSE(queue_->DequeueNext(&on_queue));
+}
+
+// Tests that blocking Peek() operations work with multiple threads.
+TEST_F(MpscQueueTest, MpscBlockingPeekTest) {
+  // We only use 2 producers here for speed.
+  ::std::thread producers[2];
+  ::std::future<int> consumer =
+      ::std::async(&BlockingPeekingConsumerThread, queue_.get(), 2);
+
+  // Make 2 producers, both using the same queue.
+  for (int i = 0; i < 2; ++i) {
+    producers[i] = ::std::thread(ProducerThread, queue_.get());
+  }
+
+  // Everything should sum to zero.
+  EXPECT_EQ(0, consumer.get());
+
+  // Join all the producers.
+  for (int i = 0; i < 2; ++i) {
+    producers[i].join();
+  }
 }
 
 }  // namespace testing

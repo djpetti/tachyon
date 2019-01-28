@@ -48,6 +48,8 @@ class Queue : public QueueInterface<T> {
   virtual bool EnqueueBlocking(const T &item);
   virtual bool DequeueNext(T *item);
   virtual void DequeueNextBlocking(T *item);
+  virtual bool PeekNext(T *item);
+  virtual void PeekNextBlocking(T *item);
 
   virtual int GetOffset() const;
 

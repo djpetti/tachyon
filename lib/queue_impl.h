@@ -307,6 +307,20 @@ void Queue<T>::DequeueNextBlocking(T *item) {
 }
 
 template <class T>
+bool Queue<T>::PeekNext(T *item) {
+  // Now, read from our designated subqueue.
+  assert(my_subqueue_ && "This queue is not configured as a consumer!");
+  return my_subqueue_->PeekNext(item);
+}
+
+template <class T>
+void Queue<T>::PeekNextBlocking(T *item) {
+  // Now, read from our designated subqueue.
+  assert(my_subqueue_ && "This queue is not configured as a consumer!");
+  my_subqueue_->PeekNextBlocking(item);
+}
+
+template <class T>
 int Queue<T>::GetOffset() const {
   return pool_->GetOffset(queue_);
 }

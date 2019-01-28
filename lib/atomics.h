@@ -5,6 +5,9 @@
 
 namespace tachyon {
 
+// TODO(danielp): Switch to std::atomic for possibly better performance and
+// increased portability.
+
 // Performs an atomic compare-and-swap operation on a 32-bit int.
 // Args:
 //  value: The value to check.

@@ -40,6 +40,20 @@ class QueueInterface {
   //  item: A place to copy the item.
   virtual void DequeueNextBlocking(T *item) = 0;
 
+  // Gets the value of the next element to be removed from the queue, but does
+  // not remove it. It is lock-free, and stays in userspace.
+  // Args:
+  //  item: A place to copy the item.
+  // Returns:
+  //  True if it succeeded in reading an item, false if the queue was empty
+  //  already.
+  virtual bool PeekNext(T *item) = 0;
+  // Like PeekNext(), but blocks if the queue is empty until an element is
+  // received.
+  // Args:
+  //  item: A place to copy the item.
+  virtual void PeekNextBlocking(T *item) = 0;
+
   // Gets the offset in the pool of the shared memory portion of this queue.
   // Returns:
   //  The offset.

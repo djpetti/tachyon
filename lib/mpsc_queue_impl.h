@@ -218,6 +218,23 @@ bool MpscQueue<T>::DequeueNext(T *item) {
 }
 
 template <class T>
+bool MpscQueue<T>::PeekNext(T *item) {
+  // Check that the space we want to read is actually valid.
+  volatile Node *read_at = queue_->array + tail_index_;
+  // Adding zero gives us a way to read the value atomically.
+  const uint32_t valid = ExchangeAdd(&(read_at->valid), 0);
+  if (!valid) {
+    // This means that the space was not valid to begin with, and we have
+    // nothing left to read.
+    return false;
+  }
+
+  *item = const_cast<T &>(read_at->value);
+
+  return true;
+}
+
+template <class T>
 void MpscQueue<T>::DoDequeue(T *item, volatile Node *read_at) {
   // Cast away the volatile, as it's going back into non-shared memory.
   *item = const_cast<T &>(read_at->value);
@@ -276,6 +293,29 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
     FutexWake(&(read_at->write_waiters),
               ::std::numeric_limits<uint32_t>::max());
   }
+}
+
+template <class T>
+void MpscQueue<T>::PeekNextBlocking(T *item) {
+  // Check that the space we want to read is actually valid.
+  volatile Node *read_at = queue_->array + tail_index_;
+  const uint32_t valid = ExchangeAdd(&(read_at->valid), 0);
+  if (!valid) {
+    // The space was not valid to begin with, and we have nothing left to read.
+    // We indicate that we are waiting for something in this spot by setting its
+    // valid to 2.
+    if (CompareExchange(&(read_at->valid), 0, 2)) {
+      while (read_at->valid == 2) {
+        // Wait for it to become valid.
+        FutexWait(&(read_at->valid), 2);
+      }
+    }
+    // Since we only have one consumer, if we get here, we can be confident that
+    // it's now valid.
+  }
+  assert(read_at->valid == 1 && "Peeking from node not marked as valid.");
+
+  *item = const_cast<T &>(read_at->value);
 }
 
 template <class T>

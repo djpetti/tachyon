@@ -60,6 +60,27 @@ int ConsumerThread(int offset, int num_producers) {
   return total;
 }
 
+// Same thing as ConsumerThread, but peeks each item prior to dequeueing it.
+int PeekingConsumerThread(int offset, int num_producers) {
+  auto queue = Queue<int>::Load(true, offset);
+
+  int total = 0;
+  for (int i = 0; i < 6001 * num_producers; ++i) {
+    int compare;
+    while (!queue->PeekNext(&compare))
+      ;
+    total += compare;
+
+    // If we can peek, we should be able to dequeue.
+    if (!queue->DequeueNext(&compare)) {
+      return -1;
+    }
+    total += compare;
+  }
+
+  return total;
+}
+
 // Same thing as the above function, but uses blocking reads.
 int BlockingConsumerThread(int offset, int num_producers) {
   auto queue = Queue<int>::Load(true, offset);
@@ -73,6 +94,28 @@ int BlockingConsumerThread(int offset, int num_producers) {
 
   return total;
 }
+
+// Same thing as BlockingConsumerThread, but peeks each item prior to dequeueing
+// it.
+int BlockingPeekingConsumerThread(int offset, int num_producers) {
+  auto queue = Queue<int>::Load(true, offset);
+
+  int total = 0;
+  for (int i = 0; i < 6001 * num_producers; ++i) {
+    int compare;
+    queue->PeekNextBlocking(&compare);
+    total += compare;
+
+    // If we can peek, we should be able to dequeue.
+    if (!queue->DequeueNext(&compare)) {
+      return -1;
+    }
+    total += compare;
+  }
+
+  return total;
+}
+
 
 // Similar in nature to ConsumerThread, but creates a new queue before every
 // read. This is meant to test the system's ability to manage subqueues. Note
@@ -336,6 +379,45 @@ TEST_F(QueueTest, MpmcBlockingTest) {
   for (int i = 0; i < 50; ++i) {
     producers[i].join();
   }
+
+  // Delete the new queue that we created.
+  queue->FreeQueue();
+}
+
+// Test that we can use the queue with peeking.
+TEST_F(QueueTest, SpscPeekingTest) {
+  // Since Queue classes have some local state involved on both the producer and
+  // consumer sides, we need to use separate queue instances.
+  auto queue = Queue<int>::Create(false, kQueueCapacity);
+  const int queue_offset = queue->GetOffset();
+
+  ::std::thread producer(ProducerThread, queue_offset);
+  ::std::future<int> consumer_ret =
+      ::std::async(&PeekingConsumerThread, queue_offset, 1);
+
+  // Wait for them both to finish.
+  EXPECT_EQ(0, consumer_ret.get());
+  producer.join();
+
+  // Delete the new queue that we created.
+  queue->FreeQueue();
+}
+
+// Test that we can use the queue normally with two threads, blocking, and
+// peeking.
+TEST_F(QueueTest, SpscBlockingPeekingTest) {
+  // Since Queue classes have some local state involved on both the producer and
+  // consumer sides, we need to use separate queue instances.
+  auto queue = Queue<int>::Create(false, kQueueCapacity);
+  const int queue_offset = queue->GetOffset();
+
+  ::std::thread producer(BlockingProducerThread, queue_offset);
+  ::std::future<int> consumer_ret =
+      ::std::async(&BlockingPeekingConsumerThread, queue_offset, 1);
+
+  // Wait for them both to finish.
+  EXPECT_EQ(0, consumer_ret.get());
+  producer.join();
 
   // Delete the new queue that we created.
   queue->FreeQueue();

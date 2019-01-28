@@ -86,17 +86,28 @@ class MpscQueue {
   //  True if it succeeded in getting an item, false if the queue was empty
   //  already.
   bool DequeueNext(T *item);
+  // Gets the next element that would be removed from the queue, but does not
+  // remove it. It does not block, is lock-free, and stays in userspace.
+  // Args:
+  //  item: A place to copy the item.
+  // Returns:
+  //  True if it succeeded in reading an item, false if the queue was empty
+  //  already.
+  bool PeekNext(T *item);
 
   // Adds a new element to the queue, and blocks if the queue is full.
-  // With no contention, this method is lock-free.
   // Args:
   //  item: The item to add to the queue.
   void EnqueueBlocking(const T &item);
   // Removes an element from the queue, and blocks if the queue is empty.
-  // With no contention, this method is lock-free.
   // Args:
   //  item: A place to copy the item.
   void DequeueNextBlocking(T *item);
+  // Gets the next element on the queue without removing it, and blocks if the
+  // queue is empty.
+  // Args:
+  //  item: A place to copy the item.
+  void PeekNextBlocking(T *item);
 
   // Gets the offset of the shared part of the queue in the shared memory pool.
   // Returns:
