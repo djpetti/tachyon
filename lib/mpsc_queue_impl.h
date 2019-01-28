@@ -172,13 +172,28 @@ void MpscQueue<T>::DoWriteBlocking(volatile Node *write_at,
   // below. If, however, they are different, then one has wrapped once more
   // than the other, so we need to use the inverted logic instead.
   bool inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
+  bool incremented_wait_counter = false;
   while ((!inverted && woken_counter < my_wait_number) ||
          (inverted && woken_counter > my_wait_number)) {
+    // Before we wait, mark that this thread is waiting.
+    if (!incremented_wait_counter) {
+      Increment(&(queue_->blocked_threads));
+      Fence();
+      incremented_wait_counter = true;
+    }
+
     FutexWait(&(write_at->write_waiters), write_waiters);
 
     write_waiters = write_at->write_waiters;
     woken_counter = (write_waiters >> 16) & 0x7FFF;
     inverted = (write_waiters & (1 << 15)) != (write_waiters & (1 << 31));
+  }
+
+  // If the thread waited, we have to mark that it is no longer waiting.
+  if (incremented_wait_counter) {
+    // Mark that this thread is no longer waiting.
+    Fence();
+    Decrement(&(queue_->blocked_threads));
   }
 }
 
@@ -209,10 +224,6 @@ bool MpscQueue<T>::DequeueNext(T *item) {
   }
 
   DoDequeue(item, read_at);
-
-  // Only now is it safe to alert writers that we have one fewer element.
-  Fence();
-  Decrement(&(queue_->write_length));
 
   return true;
 }
@@ -247,6 +258,18 @@ void MpscQueue<T>::DoDequeue(T *item, volatile Node *read_at) {
   volatile uint16_t *woken_counter =
       reinterpret_cast<volatile uint16_t *>(&(read_at->write_waiters)) + 1;
   IncrementWord(woken_counter);
+
+  Fence();
+  // Only now is it safe to decrement the write length and alert writers that
+  // there is a space.
+  Decrement(&(queue_->write_length));
+  // Check if anyone needs to be woken.
+  const uint32_t blocked_threads = ExchangeAdd(&(queue_->blocked_threads), 0);
+  if (blocked_threads) {
+    // Wake all of them up. (One of them will actually continue.)
+    FutexWake(&(read_at->write_waiters),
+              ::std::numeric_limits<uint32_t>::max());
+  }
 }
 
 template <class T>
@@ -283,16 +306,6 @@ void MpscQueue<T>::DequeueNextBlocking(T *item) {
   assert(read_at->valid == 0 && "Reading from node not marked as invalid.");
 
   DoDequeue(item, read_at);
-
-  // Only now is it safe to alert writers that we have one fewer element.
-  Fence();
-  const uint32_t old_length = ExchangeAdd(&(queue_->write_length), -1);
-  if (old_length > queue_->array_length) {
-    // There are people waiting that we need to wake up.
-    // Wake all of them up. (One of them will actually continue.)
-    FutexWake(&(read_at->write_waiters),
-              ::std::numeric_limits<uint32_t>::max());
-  }
 }
 
 template <class T>

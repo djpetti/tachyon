@@ -26,7 +26,7 @@ void ProducerThread(MpscQueue<int> *queue) {
 
 // Does the exact same thing as the function above, but uses blocking.
 void BlockingProducerThread(MpscQueue<int> *queue) {
-  for (int i = -6000; i <= 6000; ++i) {
+  for (int i = -3000; i <= 3000; ++i) {
     queue->EnqueueBlocking(i);
   }
 }
@@ -34,7 +34,7 @@ void BlockingProducerThread(MpscQueue<int> *queue) {
 // Does the same thing as the functions above, but alternates between blocking
 // and non-blocking writes.
 void AlternatingProducerThread(MpscQueue<int> *queue) {
-  for (int i = -6000; i <= 6000; ++i) {
+  for (int i = -3000; i <= 3000; ++i) {
     if (i % 2) {
       queue->EnqueueBlocking(i);
     } else {
@@ -85,7 +85,7 @@ int PeekingConsumerThread(MpscQueue<int> *queue, int num_producers) {
 // Does the exact same thing as the function above, but uses blocking.
 int BlockingConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
-  for (int i = 0; i < 12001 * num_producers; ++i) {
+  for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
     queue->DequeueNextBlocking(&compare);
     total += compare;
@@ -117,7 +117,7 @@ int BlockingPeekingConsumerThread(MpscQueue<int> *queue, int num_producers) {
 // and non-blocking reads.
 int AlternatingConsumerThread(MpscQueue<int> *queue, int num_producers) {
   int total = 0;
-  for (int i = 0; i < 12001 * num_producers; ++i) {
+  for (int i = 0; i < 6001 * num_producers; ++i) {
     int compare;
     if (i % 2) {
       queue->DequeueNextBlocking(&compare);
@@ -517,6 +517,32 @@ TEST_F(MpscQueueTest, MpscBlockingPeekTest) {
   for (int i = 0; i < 2; ++i) {
     producers[i].join();
   }
+}
+
+// Test that we can use the queue normally with two threads, blocking enqueues,
+// and non-blocking dequeues. (This is meant to catch a specific bug in the
+// implementation.)
+TEST_F(MpscQueueTest, SpscBlockingWriteNormalReadTest) {
+  // Push stuff onto the queue until it gets full. This will guarantee that the
+  // producer thread will actually block at some point.
+  while (queue_->Enqueue(1));
+
+  ::std::thread producer(BlockingProducerThread, queue_.get());
+  ::std::future<int> consumer_ret =
+      ::std::async(&ConsumerThread, queue_.get(), 1);
+
+  // Wait for them both to finish. It's not going to be zero, because we stuck
+  // some extra stuff on there initially.
+  int total = consumer_ret.get();
+
+  // It also won't read everything because of the extra stuff, so do that now.
+  int item;
+  while (queue_->DequeueNext(&item)) {
+    total += item;
+  }
+
+  EXPECT_EQ(kQueueCapacity, total);
+  producer.join();
 }
 
 }  // namespace testing

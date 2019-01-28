@@ -174,11 +174,15 @@ class MpscQueue {
     // Log base 2 of array_length.
     uint8_t array_length_shifts;
 
-    // Total length of the queue visible to writers. It is aligned specially
-    // because we basically use it as a futex in order to implement blocking.
-    volatile uint32_t write_length __attribute__((aligned(4)));
+    // Total length of the queue visible to writers.
+    volatile uint32_t write_length;
     // Current index of the head.
     volatile uint32_t head_index;
+
+    // Rough counter of the number of threads currently waiting to write to this
+    // queue. It is not guaranteed to be accurate, but it is guaranteed to be 0
+    // if no blocking enqueues were ever performed.
+    volatile uint32_t blocked_threads;
   };
 
   // Handles the implementation of blocking writes. It will block until the
